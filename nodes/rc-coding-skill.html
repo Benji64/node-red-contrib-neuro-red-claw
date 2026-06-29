@@ -1,0 +1,110 @@
+<script type="text/javascript">
+RED.nodes.registerType("rc-coding-skill", {
+  category: "neuro-red-claw",
+  color:    "#313244",
+  defaults: {
+    name:        { value: "" },
+    workDir:     { value: "" },
+    contextFile: { value: "REDCLAW.md" },
+    inputs:      { value: 1 },
+  },
+  inputs:  1,
+  outputs: 1,
+  icon:    "font-awesome/fa-code",
+  outputLabels: ["→ Orchestrateur"],
+  inputLabels: function (i) { return `Source ${i + 1}`; },
+  label: function () { return this.name || "Coding Skill"; },
+
+  oneditprepare: function () {
+    const slider  = $("#rc-inputs-slider");
+    const display = $("#rc-inputs-count");
+    slider.val(this.inputs || 1);
+    display.text(this.inputs || 1);
+    slider.on("input", function () { display.text($(this).val()); });
+  },
+  oneditsave: function () {
+    this.inputs = parseInt($("#rc-inputs-slider").val(), 10) || 1;
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="rc-coding-skill">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Coding Agent" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-workDir"><i class="fa fa-folder-open"></i> Répertoire projet</label>
+    <input type="text" id="node-input-workDir" placeholder="~/mon-projet" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Répertoire racine du projet — transmis à tous les outils de coding.
+    </div>
+  </div>
+  <div class="form-row">
+    <label for="node-input-contextFile"><i class="fa fa-file-text-o"></i> Fichier contexte</label>
+    <input type="text" id="node-input-contextFile" placeholder="REDCLAW.md" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Équivalent CLAUDE.md — décrit le projet, les conventions, les règles.
+      Injecté dans le system prompt de l'orchestrateur.
+    </div>
+  </div>
+  <hr style="border-color:#eee;"/>
+  <div class="form-row">
+    <label><i class="fa fa-sign-in"></i> Entrées</label>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <input type="range" id="rc-inputs-slider" min="1" max="10" step="1" style="flex:1;" />
+      <span id="rc-inputs-count" style="font-size:18px;font-weight:700;color:#89dceb;min-width:24px;text-align:center;">1</span>
+    </div>
+  </div>
+  <div style="font-size:0.78em;color:#555;background:#1e1e2e;color:#cdd6f4;padding:8px;border-radius:5px;margin-top:6px;line-height:1.6;">
+    <b>Outils disponibles pour l'agent :</b><br/>
+    <code>bash</code> · <code>read_file</code> · <code>write_file</code> · <code>edit_file</code> · <code>search_files</code> · <code>git</code> · <code>list_dir</code>
+    <br/><br/>
+    <b>Modèle recommandé :</b> <code>qwen2.5-coder:7b</code> via Ollama
+  </div>
+</script>
+
+<script type="text/html" data-help-name="rc-coding-skill">
+  <p><b>RedClaw Coding — Coding Skill</b><br/>
+  Skill spécialisé pour le coding agentique. Équivalent d'un Claude Code local.</p>
+
+  <h3>Outils disponibles</h3>
+  <dl class="message-properties">
+    <dt>bash</dt><dd>Exécute des commandes shell</dd>
+    <dt>read_file</dt><dd>Lit un fichier (avec sélection de plage)</dd>
+    <dt>write_file</dt><dd>Crée ou remplace un fichier</dd>
+    <dt>edit_file</dt><dd>str_replace ciblé dans un fichier existant</dd>
+    <dt>search_files</dt><dd>Grep par contenu ou find par nom</dd>
+    <dt>git</dt><dd>status, diff, log, add, commit, push, pull…</dd>
+    <dt>list_dir</dt><dd>Liste le contenu d'un dossier</dd>
+  </dl>
+
+  <h3>Fichier contexte (REDCLAW.md)</h3>
+  <p>Place un fichier <code>REDCLAW.md</code> à la racine du projet pour décrire :
+  la structure, les conventions, les commandes importantes, les règles de code.
+  Il est injecté dans le system prompt à chaque requête.</p>
+
+  <h3>Modèle recommandé</h3>
+  <p><code>qwen2.5-coder:7b</code> ou <code>deepseek-coder:6.7b</code> via Ollama.<br/>
+  Ou Claude/GPT-4 pour les tâches complexes.</p>
+
+  <h3>Flow complet</h3>
+  <pre style="font-size:10px;">
+[Coding Skill] → [Orchestrateur]
+                      ↓ Output 1
+                 [Security Gate]
+                      ↓
+                 [MCP Router]
+   ├─► [rc-tool-bash]       ──► [MCP Router]
+   ├─► [rc-tool-read-file]  ──► [MCP Router]
+   ├─► [rc-tool-write-file] ──► [MCP Router]
+   ├─► [rc-tool-edit-file]  ──► [MCP Router]
+   ├─► [rc-tool-search]     ──► [MCP Router]
+   ├─► [rc-tool-git]        ──► [MCP Router]
+   └─► [rc-tool-list-dir]   ──► [MCP Router]
+                      ↓ ⚡ Retour
+                 [Orchestrateur]
+                      ↓ Output 2
+                 [Réponse utilisateur]
+  </pre>
+</script>

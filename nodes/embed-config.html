@@ -1,0 +1,127 @@
+<script type="text/javascript">
+RED.nodes.registerType("embed-config", {
+  category: "config",
+  defaults: {
+    name:     { value: "" },
+    type:     { value: "ollama" },
+    baseUrl:  { value: "http://localhost:11434" },
+    model:    { value: "mxbai-embed-large" },
+    timeout:  { value: 15000 },
+    dims:     { value: 0 },
+    restPath: { value: "/embed" },
+  },
+  credentials: { apiKey: { type: "password" } },
+  label: function () {
+    return this.name || `${this.type} · ${this.model}`;
+  },
+
+  oneditprepare: function () {
+    const PRESETS = {
+      ollama:  { url: "http://localhost:11434", model: "mxbai-embed-large" },
+      localai: { url: "http://localhost:8080",  model: "text-embedding-ada-002" },
+      openai:  { url: "https://api.openai.com", model: "text-embedding-3-small" },
+      rest:    { url: "http://localhost:8080",  model: "embed" },
+    };
+
+    function updatePreset() {
+      const t = $("#node-config-input-type").val();
+      const p = PRESETS[t] || {};
+      if (!$("#node-config-input-baseUrl").val() ||
+          Object.values(PRESETS).some(x => x.url === $("#node-config-input-baseUrl").val())) {
+        $("#node-config-input-baseUrl").val(p.url || "");
+      }
+      if (!$("#node-config-input-model").val() ||
+          Object.values(PRESETS).some(x => x.model === $("#node-config-input-model").val())) {
+        $("#node-config-input-model").val(p.model || "");
+      }
+      $(".rc-embed-rest").toggle(t === "rest");
+      $(".rc-embed-key").toggle(t === "openai");
+    }
+
+    $("#node-config-input-type").on("change", updatePreset);
+    updatePreset();
+
+    $("#rc-embed-test").on("click", function () {
+      const btn = $(this).text("Test…").prop("disabled", true);
+      $.post("/redclaw/embed/test", {
+        type: $("#node-config-input-type").val(),
+        baseUrl: $("#node-config-input-baseUrl").val(),
+        model: $("#node-config-input-model").val(),
+        timeout: $("#node-config-input-timeout").val(),
+      }).done(d => {
+        btn.text("✅ OK").css("color","green");
+        if (d.dims) $("#node-config-input-dims").val(d.dims);
+        setTimeout(() => btn.text("Tester").css("color","").prop("disabled",false), 2000);
+      }).fail(e => {
+        btn.text("❌ Erreur").css("color","red");
+        RED.notify("Erreur : " + (e.responseJSON?.error || e.statusText), "error");
+        setTimeout(() => btn.text("Tester").css("color","").prop("disabled",false), 2000);
+      });
+    });
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="embed-config">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-config-input-name" placeholder="Embed local" />
+  </div>
+
+  <div class="form-row">
+    <label for="node-config-input-type"><i class="fa fa-server"></i> Backend</label>
+    <select id="node-config-input-type" style="width:75%;">
+      <option value="ollama">Ollama</option>
+      <option value="localai">LocalAI / LM Studio</option>
+      <option value="openai">OpenAI</option>
+      <option value="rest">REST custom</option>
+    </select>
+  </div>
+
+  <div class="form-row">
+    <label for="node-config-input-baseUrl"><i class="fa fa-globe"></i> URL</label>
+    <input type="text" id="node-config-input-baseUrl" placeholder="http://localhost:11434" />
+  </div>
+
+  <div class="form-row">
+    <label for="node-config-input-model"><i class="fa fa-cube"></i> Modèle</label>
+    <input type="text" id="node-config-input-model"
+      placeholder="mxbai-embed-large" style="font-family:monospace;" />
+  </div>
+
+  <div class="form-row rc-embed-key" style="display:none;">
+    <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API Key</label>
+    <input type="password" id="node-config-input-apiKey" />
+  </div>
+
+  <div class="form-row rc-embed-rest" style="display:none;">
+    <label for="node-config-input-restPath"><i class="fa fa-link"></i> Chemin REST</label>
+    <input type="text" id="node-config-input-restPath" placeholder="/embed" style="font-family:monospace;" />
+  </div>
+
+  <div style="display:flex;gap:10px;">
+    <div style="flex:1;">
+      <label style="display:block;font-size:0.82em;color:#666;">Timeout (ms)</label>
+      <input type="number" id="node-config-input-timeout" min="1000" step="1000" style="width:100%;" />
+    </div>
+    <div style="flex:1;">
+      <label style="display:block;font-size:0.82em;color:#666;">Dimensions (0 = auto)</label>
+      <input type="number" id="node-config-input-dims" min="0" style="width:100%;"
+        placeholder="auto" readonly />
+    </div>
+  </div>
+
+  <div class="form-row" style="margin-top:8px;">
+    <button id="rc-embed-test" class="red-ui-button" style="width:auto;">
+      <i class="fa fa-plug"></i> Tester la connexion
+    </button>
+  </div>
+
+  <div style="font-size:0.78em;background:#e8f8e8;padding:7px;border-radius:4px;
+              border:1px solid #a6e3a1;line-height:1.7;margin-top:6px;">
+    <b>Modèles recommandés (Ollama) :</b><br/>
+    <code>mxbai-embed-large</code>  → 1024 dims · excellent · ~670M<br/>
+    <code>nomic-embed-text</code>   → 768 dims  · léger    · ~274M<br/>
+    <code>all-minilm</code>         → 384 dims  · ultra-léger pour Pi
+  </div>
+</script>

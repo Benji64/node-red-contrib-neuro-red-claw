@@ -1,0 +1,47 @@
+<script type="text/javascript">
+RED.nodes.registerType("rc-tool-bash", {
+  category: "neuro-red-claw",
+  color:    "#f38ba8",
+  defaults: {
+    name:    { value: "" },
+    workDir: { value: "" },
+    timeout: { value: 30000 },
+  },
+  inputs:  1,
+  outputs: 1,
+  icon:    "font-awesome/fa-terminal",
+  outputLabels: ["→ MCP Router"],
+  inputLabels:  "Depuis MCP Router",
+  label: function () { return this.name || "Bash"; },
+});
+</script>
+
+<script type="text/html" data-template-name="rc-tool-bash">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Bash" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-workDir"><i class="fa fa-folder"></i> Répertoire</label>
+    <input type="text" id="node-input-workDir" placeholder="~/mon-projet (défaut: home)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+  <div style="font-size:0.78em;color:#555;background:#f8f8f8;padding:8px;border-radius:5px;margin-top:6px;line-height:1.6;">
+    <b>Exécute une commande shell.</b><br/>
+    <b>Câblage :</b> <code>[MCP Router] ──► [Bash] ──► [MCP Router]</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="rc-tool-bash">
+  <p><b>RedClaw Coding — Bash</b><br/>Exécute une commande shell.</p>
+  <h3>Paramètres (msg.payload)</h3>
+  <dl class="message-properties">
+    <dt>command <span class="property-type">string</span></dt><dd>La commande à exécuter. Ex: ls -la, npm test, python script.py</dd>
+    <dt>cwd <span class="property-type">string</span></dt><dd>Répertoire d'exécution (optionnel, défaut: workDir)</dd>
+  </dl>
+  <h3>Résultat (msg.payload en sortie)</h3>
+  <p>Retourné vers le MCP Router via <code>redclaw_call_id</code>.</p>
+</script>

@@ -1,0 +1,134 @@
+<script type="text/javascript">
+RED.nodes.registerType("redclaw-observe", {
+  category:  "neuro-red-claw",
+  color:     "#89b4fa",
+  defaults: {
+    name:          { value: "" },
+    skillName:     { value: "" },
+    triggerMode:   { value: "change" },
+    changeThresh:  { value: 0.05 },
+    defaultTtl:    { value: 300000 },
+    includeGoals:  { value: true },
+    includeSkills: { value: false },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-eye",
+  outputLabels: [
+    "→ Perception unifiée → skill → orchestrateur (R)",
+    "→ Changements détectés (signal brut)",
+  ],
+  inputLabels: "Signaux (capteurs, événements, états)",
+  label: function () {
+    return this.name || `Observe (${this.triggerMode})`;
+  },
+  oneditprepare: function () {
+    function toggleThresh() {
+      $(".rc-obs-thresh").toggle($("#node-input-triggerMode").val() === "change");
+    }
+    $("#node-input-triggerMode").on("change", toggleThresh);
+    toggleThresh();
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="redclaw-observe">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Observe Maison" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillName"><i class="fa fa-puzzle-piece"></i> Skill cible</label>
+    <input type="text" id="node-input-skillName" placeholder="maison" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Skill qui recevra la perception (sessionId de la mémoire).
+    </div>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row">
+    <label for="node-input-triggerMode"><i class="fa fa-bolt"></i> Déclenchement</label>
+    <select id="node-input-triggerMode" style="width:75%;">
+      <option value="change">Changement significatif détecté</option>
+      <option value="always">À chaque signal reçu</option>
+      <option value="manual">Manuel (msg.ora_trigger = true)</option>
+    </select>
+  </div>
+  <div class="form-row rc-obs-thresh">
+    <label for="node-input-changeThresh"><i class="fa fa-sliders"></i> Seuil (%)</label>
+    <input type="number" id="node-input-changeThresh" min="0" max="1" step="0.01"
+      style="width:80px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:8px;">
+      0.05 = 5% de variation pour déclencher
+    </span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-defaultTtl"><i class="fa fa-clock-o"></i> TTL signal (ms)</label>
+    <input type="number" id="node-input-defaultTtl" min="1000" step="1000"
+      style="width:120px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">durée de validité d'un signal</span>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeGoals" style="width:auto;" />
+    <label for="node-input-includeGoals" style="width:auto;margin-left:5px;">
+      Inclure les objectifs actifs dans la perception
+    </label>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeSkills" style="width:auto;" />
+    <label for="node-input-includeSkills" style="width:auto;margin-left:5px;">
+      Inclure l'index des skills disponibles
+    </label>
+  </div>
+
+  <div style="font-size:0.78em;background:#dce8ff;padding:8px;border-radius:5px;
+              border:1px solid #89b4fa;line-height:1.8;margin-top:6px;">
+    <b>Câblage ORA complet :</b><br/>
+    <code>[Capteur temp]  ──► [Observe] ──1──► [skill: maison]</code><br/>
+    <code>[Capteur présence]  ──►  ↑                 ↓</code><br/>
+    <code>[Timer 5min]        ──►  ↑          [Orchestrateur R]</code><br/>
+    <code>                              ↓ Output1 (tool call)</code><br/>
+    <code>                       [MCP Router A] ──► [actions]</code><br/>
+    <code>                              ↓ ⚡ retour</code><br/>
+    <code>                       [Orchestrateur R] ──► réponse</code><br/><br/>
+    <b>Format d'entrée :</b><br/>
+    <code>msg.ora_source = "salon"</code> · <code>msg.ora_key = "temperature"</code><br/>
+    <code>msg.ora_unit = "°C"</code> · <code>msg.payload = 18.5</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-observe">
+  <p><b>RedClaw — Observe</b> (phase O du cycle ORA)<br/>
+  Agrège les signaux entrants en une perception unifiée.<br/>
+  Déclenche le raisonnement quand les conditions sont remplies.</p>
+
+  <h3>Cycle ORA dans Node-RED</h3>
+  <pre style="font-size:10px;">
+Capteurs ──► [Observe] ──► [skill] ──► [Orchestrateur]
+                ↑               Reason (R)     │
+                │                              ▼
+                │                        [MCP Router]
+                │                        [Adapters]
+                │                              │
+                └──────── feedback ────────────┘
+                              Act (A)
+  </pre>
+
+  <h3>Format msg d'entrée</h3>
+  <dl class="message-properties">
+    <dt>payload</dt><dd>Valeur du signal</dd>
+    <dt>ora_source</dt><dd>Source du signal (ex: "salon", "compteur_enedis")</dd>
+    <dt>ora_key</dt><dd>Clé de la valeur (ex: "temperature", "presence")</dd>
+    <dt>ora_unit</dt><dd>Unité optionnelle (°C, kWh, lux...)</dd>
+    <dt>ora_ttl</dt><dd>Durée de validité en ms (écrase le défaut)</dd>
+    <dt>ora_trigger</dt><dd>true = force le déclenchement (mode manuel)</dd>
+  </dl>
+
+  <h3>Output 1 — Perception</h3>
+  <p><code>msg.ora_perception</code> contient l'état complet agrégé.<br/>
+  <code>msg.payload</code> est le résumé textuel pour le LLM.</p>
+</script>

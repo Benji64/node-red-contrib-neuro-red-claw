@@ -1,0 +1,47 @@
+<script type="text/javascript">
+RED.nodes.registerType("rc-tool-write-file", {
+  category: "neuro-red-claw",
+  color:    "#a6e3a1",
+  defaults: {
+    name:    { value: "" },
+    workDir: { value: "" },
+    timeout: { value: 30000 },
+  },
+  inputs:  1,
+  outputs: 1,
+  icon:    "font-awesome/fa-floppy-o",
+  outputLabels: ["→ MCP Router"],
+  inputLabels:  "Depuis MCP Router",
+  label: function () { return this.name || "Write File"; },
+});
+</script>
+
+<script type="text/html" data-template-name="rc-tool-write-file">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Write File" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-workDir"><i class="fa fa-folder"></i> Répertoire</label>
+    <input type="text" id="node-input-workDir" placeholder="~/mon-projet (défaut: home)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+  <div style="font-size:0.78em;color:#555;background:#f8f8f8;padding:8px;border-radius:5px;margin-top:6px;line-height:1.6;">
+    <b>Crée ou remplace un fichier.</b><br/>
+    <b>Câblage :</b> <code>[MCP Router] ──► [Write File] ──► [MCP Router]</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="rc-tool-write-file">
+  <p><b>RedClaw Coding — Write File</b><br/>Crée ou remplace un fichier.</p>
+  <h3>Paramètres (msg.payload)</h3>
+  <dl class="message-properties">
+    <dt>path <span class="property-type">string</span></dt><dd>Chemin du fichier</dd>
+    <dt>content <span class="property-type">string</span></dt><dd>Contenu à écrire</dd>
+  </dl>
+  <h3>Résultat (msg.payload en sortie)</h3>
+  <p>Retourné vers le MCP Router via <code>redclaw_call_id</code>.</p>
+</script>

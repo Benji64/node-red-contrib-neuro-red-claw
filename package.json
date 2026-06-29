@@ -1,0 +1,57 @@
+{
+  "name": "node-red-contrib-neuro-red-claw",
+  "version": "2.2.0",
+  "description": "neuro-red-claw — Système nerveux général d'agents IA pour Node-RED. Framework cognitif multi-agents : skills, orchestration, mémoire, objectifs, observation, politiques, réflexion, pensée divergente.",
+  "keywords": [
+    "node-red",
+    "neuro-red-claw",
+    "ai-agent",
+    "multi-agent",
+    "cognitive",
+    "llm",
+    "mcp",
+    "orchestrator",
+    "memory",
+    "goals",
+    "policy",
+    "reflect",
+    "divergent-thinking"
+  ],
+  "author": "RedClaw Project",
+  "license": "MIT",
+  "node-red": {
+    "version": ">=3.0.0",
+    "nodes": {
+      "llm-config": "nodes/llm-config.js",
+      "redclaw-skill": "nodes/redclaw-skill.js",
+      "mcp-router": "nodes/mcp-router.js",
+      "mcp-adapter": "nodes/mcp-adapter.js",
+      "security-gate": "nodes/security-gate.js",
+      "rc-coding-skill": "nodes/rc-coding-skill.js",
+      "rc-tool-bash": "nodes/rc-tool-bash.js",
+      "rc-tool-read-file": "nodes/rc-tool-read-file.js",
+      "rc-tool-write-file": "nodes/rc-tool-write-file.js",
+      "rc-tool-edit-file": "nodes/rc-tool-edit-file.js",
+      "rc-tool-search": "nodes/rc-tool-search.js",
+      "rc-tool-git": "nodes/rc-tool-git.js",
+      "rc-tool-list-dir": "nodes/rc-tool-list-dir.js",
+      "redclaw-hub": "nodes/redclaw-hub.js",
+      "redclaw-goal": "nodes/redclaw-goal.js",
+      "redclaw-observe": "nodes/redclaw-observe.js",
+      "redclaw-policy": "nodes/redclaw-policy.js",
+      "redclaw-reflect": "nodes/redclaw-reflect.js",
+      "redclaw-diverge": "nodes/redclaw-diverge.js",
+      "redclaw-orchestrator": "nodes/agent-orchestrator.js",
+      "neuro-chat": "nodes/neuro-chat.js",
+      "neuro-approval": "nodes/neuro-approval.js",
+      "embed-config": "nodes/embed-config.js",
+      "neuro-embed": "nodes/neuro-embed.js"
+    }
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,119 @@
+<script type="text/javascript">
+RED.nodes.registerType("redclaw-reflect", {
+  category: "neuro-red-claw",
+  color:    "#a6e3a1",
+  defaults: {
+    name:      { value: "" },
+    skillName: { value: "" },
+    analyzeN:  { value: 50 },
+    useLlm:    { value: true },
+    llmConfig: { value: "", type: "llm-config" },
+    autoApply: { value: false },
+    debugMode: { value: false },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-refresh",
+  outputLabels: [
+    "→ Rapport complet (insights + stats)",
+    "→ Ajustements actionnables",
+  ],
+  inputLabels: "Déclencheur (timer, inject, événement)",
+  label: function () {
+    return this.name || `Reflect (${this.skillName || "all"})`;
+  },
+
+  oneditprepare: function () {
+    const toggleLlm = () => {
+      const show = $("#node-input-useLlm").is(":checked");
+      $(".rc-reflect-llm").toggle(show);
+    };
+    $("#node-input-useLlm").on("change", toggleLlm);
+    toggleLlm();
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="redclaw-reflect">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Reflect Maison" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillName"><i class="fa fa-puzzle-piece"></i> Skill analysé</label>
+    <input type="text" id="node-input-skillName"
+      placeholder="(vide = tous les skills)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-analyzeN"><i class="fa fa-list-ol"></i> Tickets à analyser</label>
+    <input type="number" id="node-input-analyzeN" min="5" step="5"
+      style="width:80px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:8px;">tickets récents</span>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-useLlm" style="width:auto;" />
+    <label for="node-input-useLlm" style="width:auto;margin-left:5px;">
+      Enrichir avec le LLM (insights profonds)
+    </label>
+  </div>
+  <div class="form-row rc-reflect-llm">
+    <label for="node-input-llmConfig"><i class="fa fa-cog"></i> Config LLM</label>
+    <input type="text" id="node-input-llmConfig" />
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-debugMode" style="width:auto;" />
+    <label for="node-input-debugMode" style="width:auto;margin-left:5px;">
+      Logs debug
+    </label>
+  </div>
+
+  <div style="font-size:0.78em;background:#e8f8e8;padding:8px;border-radius:5px;
+              border:1px solid #a6e3a1;line-height:1.8;margin-top:6px;">
+    <b>Cycle de réflexion :</b><br/>
+    <code>[Timer/inject] ──► [Reflect] ──1──► [debug: rapport]</code><br/>
+    <code>                              └──2──► [change: applique ajustements]</code><br/><br/>
+    <b>Déclenchement avec skill ciblé :</b><br/>
+    <code>msg.reflect_skill = "energie"</code><br/>
+    <code>msg.reflect_n = 20</code> (optionnel, écrase la config)
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-reflect">
+  <p><b>RedClaw — Reflect</b> (méta-cognition)<br/>
+  L'agent analyse ses propres tickets et apprend de ses décisions.</p>
+
+  <h3>Cycle de réflexion</h3>
+  <pre style="font-size:10px;">
+[Timer 1h] ──► [Reflect]
+                  ├─ Output 1 ──► rapport complet
+                  │               { stats, insights, patterns, prescriptions }
+                  └─ Output 2 ──► ajustements
+                                  [{ type:"skill_context", suggestion:"..." }]
+  </pre>
+
+  <h3>Output 1 — Rapport</h3>
+  <dl class="message-properties">
+    <dt>redclaw_reflect.stats</dt><dd>Taux succès, durée, tokens, steps</dd>
+    <dt>redclaw_reflect.patterns</dt><dd>Patterns détectés (boucles, échecs récurrents)</dd>
+    <dt>redclaw_reflect.prescriptions</dt><dd>Suggestions automatiques</dd>
+    <dt>redclaw_reflect.llmInsights</dt><dd>Analyse approfondie du LLM</dd>
+  </dl>
+
+  <h3>Output 2 — Ajustements</h3>
+  <p>Liste d'ajustements : <code>{ type, suggestion, priority }</code><br/>
+  Types : <code>skill_context</code> · <code>goal</code> · <code>policy</code> ·
+  <code>orchestrator</code> · <code>llm_config</code></p>
+
+  <h3>Intégration avec les autres nœuds</h3>
+  <p>Le Output 2 peut alimenter :</p>
+  <ul>
+    <li>Un nœud <code>change</code> pour modifier le contexte d'un skill</li>
+    <li>Un nœud <code>redclaw-goal</code> en mode reset/adjust</li>
+    <li>Un nœud <code>redclaw-policy</code> pour ajouter une règle</li>
+    <li>Un dashboard pour revue humaine</li>
+  </ul>
+</script>

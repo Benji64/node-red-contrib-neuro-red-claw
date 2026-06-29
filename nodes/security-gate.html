@@ -1,0 +1,113 @@
+<script type="text/javascript">
+(function () {
+  const PRESETS = [
+    { label:"🗑 Bloquer suppressions",   rule:{ tool:"delete*",  action:"deny",    reason:"Suppression interdite" }},
+    { label:"✏️ Confirmer écritures",    rule:{ tool:"*write*",  action:"confirm", reason:"Écriture nécessite confirmation" }},
+    { label:"⏱ Rate limit (10/min)",    rule:{ tool:"*",        action:"allow",   rateLimit:{ maxCalls:10, windowMs:60000 }}},
+    { label:"🔒 Bloquer shell",          rule:{ tool:"exec*",    action:"deny",    reason:"Exécution shell interdite" }},
+    { label:"⚠️ Tout confirmer",         rule:{ tool:"*",        action:"confirm", reason:"Confirmation requise" }},
+  ];
+
+  RED.nodes.registerType("security-gate", {
+    category: "neuro-red-claw",
+    color:    "#f38ba8",
+    defaults: {
+      name:            { value: "" },
+      defaultAction:   { value: "allow" },
+      rules:           { value: "[]" },
+      globalRateLimit: { value: "" },
+      logBlocked:      { value: true },
+      confirmTimeout:  { value: 60000 },
+    },
+    inputs:  1,
+    outputs: 3,
+    icon:    "font-awesome/fa-shield",
+    outputLabels: ["✅ Autorisé → MCP Router", "⏳ Confirmation requise", "🚫 Bloqué"],
+    label: function () {
+      let r=[]; try{r=JSON.parse(this.rules||"[]");}catch(_){}
+      return this.name || `Security Gate (${r.length} règle(s))`;
+    },
+
+    oneditprepare: function () {
+      const area = $("#node-input-rules");
+      try { area.val(JSON.stringify(JSON.parse(area.val()||"[]"), null, 2)); } catch(_) {}
+      area.on("input", () => {
+        try { JSON.parse(area.val()); area.css("border-color",""); $("#rc-sg-err").hide(); }
+        catch(e) { area.css("border-color","red"); $("#rc-sg-err").text(e.message).show(); }
+      });
+      PRESETS.forEach((p, i) => {
+        $(`#rc-sg-p${i}`).on("click", () => {
+          try { const r=JSON.parse(area.val()||"[]"); r.push(p.rule); area.val(JSON.stringify(r,null,2)); }
+          catch(_) { area.val(JSON.stringify([p.rule],null,2)); }
+          area.trigger("input");
+        });
+      });
+      $("#rc-sg-clear").on("click", () => { if(confirm("Effacer toutes les règles ?")) area.val("[]"); });
+    },
+    oneditsave: function () { try{JSON.parse(this.rules);}catch(_){this.rules="[]";} },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="security-gate">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Security Gate" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-defaultAction"><i class="fa fa-gavel"></i> Défaut</label>
+    <select id="node-input-defaultAction" style="width:75%;">
+      <option value="allow">✅ Autoriser tout (sauf règles deny)</option>
+      <option value="deny">🚫 Bloquer tout (sauf règles allow)</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-globalRateLimit"><i class="fa fa-tachometer"></i> Rate limit global</label>
+    <input type="text" id="node-input-globalRateLimit" placeholder='{"maxCalls":30,"windowMs":60000}' />
+  </div>
+  <div class="form-row">
+    <label for="node-input-confirmTimeout"><i class="fa fa-clock-o"></i> Timeout confirmation (ms)</label>
+    <input type="number" id="node-input-confirmTimeout" min="5000" step="5000" style="width:110px;" />
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-logBlocked" style="width:auto;" />
+    <label for="node-input-logBlocked" style="width:auto;margin-left:5px;">Logger les actions bloquées</label>
+  </div>
+  <hr style="border-color:#eee;"/>
+  <div class="form-row" style="margin-bottom:4px;">
+    <label><i class="fa fa-shield"></i> Règles</label>
+    <div style="margin-bottom:5px;display:flex;flex-wrap:wrap;gap:4px;">
+      <button id="rc-sg-p0" class="red-ui-button" style="font-size:10px;padding:2px 5px;">🗑 Bloquer suppression</button>
+      <button id="rc-sg-p1" class="red-ui-button" style="font-size:10px;padding:2px 5px;">✏️ Confirmer écriture</button>
+      <button id="rc-sg-p2" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⏱ Rate limit</button>
+      <button id="rc-sg-p3" class="red-ui-button" style="font-size:10px;padding:2px 5px;">🔒 Bloquer shell</button>
+      <button id="rc-sg-p4" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⚠️ Tout confirmer</button>
+      <button id="rc-sg-clear" class="red-ui-button" style="font-size:10px;padding:2px 5px;color:red;">✕</button>
+    </div>
+    <textarea id="node-input-rules" rows="7"
+      style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;border:1px solid #ccc;padding:5px;"
+      placeholder="[]"></textarea>
+    <div id="rc-sg-err" style="color:red;font-size:11px;margin-top:2px;display:none;"></div>
+    <div style="font-size:0.75em;color:#888;margin-top:3px;">
+      Wildcards : <code>"tool":"*"</code> · <code>"tool":"delete*"</code><br/>
+      Actions : <code>"allow"</code> · <code>"deny"</code> · <code>"confirm"</code>
+    </div>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="security-gate">
+  <p><b>RedClaw — Security Gate</b></p>
+  <h3>Position dans le flow</h3>
+  <pre style="font-size:10px;">
+[Orchestrateur] Output 1
+       ↓
+[Security Gate]
+  ├─ Output 1 ──► [MCP Router]       ✅
+  ├─ Output 2 ──► [confirmation UI]  ⏳
+  └─ Output 3 ──► [log / alerte]     🚫
+  </pre>
+  <h3>Détection automatique (toujours actif)</h3>
+  <p>Path traversal, injection shell, SQL injection, rm -rf, /etc/passwd, eval()</p>
+  <h3>Confirmation humaine</h3>
+  <p>Envoyer sur l'entrée : <code>msg.redclaw_confirm = { callId, approved: true/false }</code></p>
+</script>

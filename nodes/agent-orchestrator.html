@@ -1,0 +1,211 @@
+<script type="text/javascript">
+RED.nodes.registerType("redclaw-orchestrator", {
+  category: "neuro-red-claw",
+  color:    "#cba6f7",
+  defaults: {
+    name:          { value: "" },
+    llmMode:       { value: "internal" },
+    llmConfig:     { value: "", type: "llm-config" },
+    memoryEnabled: { value: true },
+    memoryDir:     { value: "" },
+    maxSteps:      { value: 5 },
+    maxHistory:    { value: 6 },
+    ttlHours:      { value: 24 },
+    debugMode:     { value: false },
+    tokenBudget:   { value: 3000 },
+  },
+  inputs:  1,
+  outputs: 3,
+  icon:    "font-awesome/fa-magic",
+  outputLabels: [
+    "→ Security Gate / MCP Router",
+    "→ Réponse utilisateur",
+    "→ LLM externe (mode externe)",
+  ],
+  label: function () { return this.name || "Orchestrateur"; },
+
+  oneditprepare: function () {
+    // ── Boutons tickets v1.5 ──────────────────────────────────────────────
+    function _fmtTicket(t) {
+      const icon   = t.status === "completed" ? "✅" : t.status === "failed" ? "❌" : "⏳";
+      const tools  = (t.tool_calls||[]).map(c => c.tool+(c.success?"✓":"✗")).join(" ");
+      const dur    = t.duration_ms ? t.duration_ms+"ms" : "…";
+      return `${icon} [${t.id}] ${t.skill}\n  "${(t.user_message||"").slice(0,60)}"\n  ${dur} · ${t.tokens_in||0}tk · steps:[${(t.steps||[]).join("→")}]${tools?" · tools:"+tools:""}${t.error?" · ERR:"+t.error.slice(0,60):""}`;
+    }
+
+    $("#rc-btn-stats").on("click", function () {
+      fetch("/redclaw/stats").then(r=>r.json()).then(d => {
+        const t = d.tickets, i = d.instrumentation;
+        const msg = "── Tickets ──\n"
+          + (t ? `Total: ${t.total} · En cours: ${t.running} · Succès: ${t.success_rate}\n`
+                +`Durée moy.: ${t.avg_duration_ms}ms · Tokens moy.: ${t.avg_tokens_in}\n`
+                +`Top tools: ${t.top_tools}` : "Aucun ticket")
+          + "\n\n── LLM (mémoire) ──\n"
+          + (i ? `Succès: ${i.success_rate} · Durée: ${i.avg_duration_ms}ms · Étapes: ${i.avg_steps}` : "Aucune stat");
+        alert(msg);
+      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+    });
+
+    $("#rc-btn-tickets").on("click", function () {
+      fetch("/redclaw/tickets?n=10").then(r=>r.json()).then(d => {
+        if (!d.tickets?.length) return RED.notify("Aucun ticket", "info");
+        alert(`Tickets récents (${d.tickets.length}):\n\n` + d.tickets.map(_fmtTicket).join("\n\n"));
+      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+    });
+
+    $("#rc-btn-tickets-fail").on("click", function () {
+      fetch("/redclaw/tickets?n=20&status=failed").then(r=>r.json()).then(d => {
+        if (!d.tickets?.length) return RED.notify("Aucun ticket échoué ✅", "info");
+        alert(`Tickets échoués (${d.tickets.length}):\n\n` + d.tickets.map(_fmtTicket).join("\n\n"));
+      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+    });
+    // ─────────────────────────────────────────────────────────────────────
+    function toggleMode() {
+      const ext = $("#node-input-llmMode").val() === "external";
+      $(".rc-llm-internal").toggle(!ext);
+      $(".rc-llm-external").toggle(ext);
+    }
+    $("#node-input-llmMode").on("change", toggleMode);
+    toggleMode();
+
+    function toggleMem() {
+      $(".rc-mem-row").toggle($("#node-input-memoryEnabled").is(":checked"));
+    }
+    $("#node-input-memoryEnabled").on("change", toggleMem);
+    toggleMem();
+
+    $("#rc-orch-sessions").on("click", async function () {
+      try {
+        const r = await fetch("/redclaw/sessions");
+        const d = await r.json();
+        if (!d.sessions.length) return RED.notify("Aucune session active", "info");
+        alert(d.sessions.map(s =>
+          `• ${s.id} — ${s.count} msg — ${new Date(s.updatedAt).toLocaleString()}`
+        ).join("\n"));
+      } catch (e) { RED.notify(e.message, "error"); }
+    });
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="redclaw-orchestrator">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Orchestrateur" />
+  </div>
+
+  <!-- Mode LLM -->
+  <div class="form-row">
+    <label for="node-input-llmMode"><i class="fa fa-brain"></i> Mode LLM</label>
+    <select id="node-input-llmMode" style="width:75%;">
+      <option value="internal">Interne — llm-config (Ollama, OpenAI, Anthropic…)</option>
+      <option value="external">Externe — nœud LLM Node-RED (llama-cpp, etc.)</option>
+    </select>
+  </div>
+
+  <!-- Config interne -->
+  <div class="rc-llm-internal form-row">
+    <label for="node-input-llmConfig"><i class="fa fa-cog"></i> Config LLM</label>
+    <input type="text" id="node-input-llmConfig" />
+  </div>
+
+  <!-- Info externe -->
+  <div class="rc-llm-external" style="display:none;font-size:0.78em;color:#555;
+       background:#f0f0ff;padding:8px;border-radius:5px;border:1px solid #cba6f7;
+       line-height:1.7;margin-bottom:8px;">
+    <b>Mode externe — câblage :</b><br/>
+    <code>Output 3 ──► [llama-cpp] ──► Input de l'Orchestrateur</code><br/>
+    <br/>
+    Le prompt est envoyé en <code>msg.payload = messages[]</code> (format chat).<br/>
+    La réponse est lue depuis <code>msg.payload</code> (string).<br/>
+    <code>msg.redclaw_llm_id</code> est préservé automatiquement — ne pas le modifier.
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row">
+    <label><i class="fa fa-repeat"></i> Max étapes</label>
+    <input type="number" id="node-input-maxSteps" min="1" max="20" style="width:70px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:8px;">aller-retours LLM ↔ tool</span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-tokenBudget"><i class="fa fa-tachometer"></i> Budget tokens</label>
+    <input type="number" id="node-input-tokenBudget" min="500" step="500" style="width:110px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:8px;">contexte max envoyé au LLM (3000 = ~12 000 chars)</span>
+  </div>
+
+  <div class="form-row">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button id="rc-btn-stats" class="red-ui-button" style="font-size:11px;padding:3px 8px;">
+        <i class="fa fa-bar-chart"></i> Stats
+      </button>
+      <button id="rc-btn-tickets" class="red-ui-button" style="font-size:11px;padding:3px 8px;">
+        <i class="fa fa-ticket"></i> Tickets récents
+      </button>
+      <button id="rc-btn-tickets-fail" class="red-ui-button" style="font-size:11px;padding:3px 8px;color:#f38ba8;">
+        <i class="fa fa-times-circle"></i> Tickets échoués
+      </button>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-debugMode" style="width:auto;" />
+    <label for="node-input-debugMode" style="width:auto;margin-left:5px;">Debug (logs LLM)</label>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-memoryEnabled" style="width:auto;" />
+    <label for="node-input-memoryEnabled" style="width:auto;margin-left:5px;">
+      <i class="fa fa-database"></i> Mémoire de conversation
+    </label>
+  </div>
+  <div class="form-row rc-mem-row">
+    <label for="node-input-memoryDir"><i class="fa fa-folder"></i> Dossier mémoire</label>
+    <input type="text" id="node-input-memoryDir" placeholder="~/.node-red/redclaw-memory (défaut)" />
+  </div>
+  <div class="form-row rc-mem-row" style="display:flex;gap:14px;">
+    <div>
+      <label style="display:block;font-size:0.8em;color:#888;">Échanges retenus</label>
+      <input type="number" id="node-input-maxHistory" min="1" max="20" style="width:65px;" />
+    </div>
+    <div>
+      <label style="display:block;font-size:0.8em;color:#888;">TTL (heures)</label>
+      <input type="number" id="node-input-ttlHours" min="1" style="width:65px;" />
+    </div>
+    <div style="display:flex;align-items:flex-end;">
+      <button id="rc-orch-sessions" class="red-ui-button">
+        <i class="fa fa-list"></i> Sessions
+      </button>
+    </div>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-orchestrator">
+  <p><b>RedClaw — Orchestrateur</b></p>
+
+  <h3>Mode Interne</h3>
+  <p>Utilise <b>llm-config</b> directement (Ollama, OpenAI, Anthropic, LM Studio, REST).</p>
+
+  <h3>Mode Externe</h3>
+  <p>Envoie le prompt sur <b>Output 3</b> vers n'importe quel nœud LLM Node-RED.<br/>
+  Compatible avec <code>node-red-contrib-llama-cpp</code> et tout autre nœud LLM.</p>
+  <pre style="font-size:10px;">
+Output 3 ──► [llama-cpp (mode chat)]
+                   Output 1 ──► [Orchestrateur] Input
+  </pre>
+  <p><code>msg.redclaw_llm_id</code> doit être préservé dans msg — automatique si le
+  nœud LLM ne remplace pas msg entièrement.</p>
+
+  <h3>Sorties</h3>
+  <dl class="message-properties">
+    <dt>Output 1</dt><dd>Tool call → Security Gate → MCP Router</dd>
+    <dt>Output 2</dt><dd>Réponse finale → utilisateur</dd>
+    <dt>Output 3</dt><dd>Prompt LLM → nœud LLM externe (mode externe)</dd>
+  </dl>
+
+  <h3>Retour LLM externe</h3>
+  <p>Le nœud LLM doit retourner <code>msg.payload</code> = string (la réponse).<br/>
+  Compatible <code>node-red-contrib-llama-cpp</code> en mode <b>chat</b>.</p>
+</script>

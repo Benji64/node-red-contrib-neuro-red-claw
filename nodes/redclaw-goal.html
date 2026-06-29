@@ -1,0 +1,146 @@
+<script type="text/javascript">
+RED.nodes.registerType("redclaw-goal", {
+  category:  "neuro-red-claw",
+  color:     "#f9e2af",
+  defaults: {
+    name:      { value: "" },
+    goalId:    { value: "" },
+    skillName: { value: "" },
+    goalName:  { value: "" },
+    priority:  { value: "medium" },
+    metric:    { value: "" },
+    target:    { value: 0 },
+    unit:      { value: "" },
+    direction: { value: "minimize" },
+    deadline:  { value: "" },
+    goalCtx:   { value: "" },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-bullseye",
+  outputLabels: [
+    "→ Msg enrichi (redclaw_goal) → skill / orchestrateur",
+    "→ Objectif atteint (événement unique)",
+  ],
+  inputLabels: "Valeur numérique de la métrique",
+  label: function () {
+    return this.name || (this.goalName ? `🎯 ${this.goalName}` : "Objectif");
+  },
+  oneditprepare: function () {
+    if (!this.goalId || this.goalId.trim() === "") {
+      const id = "goal_" + (this.id || Date.now().toString(36)).slice(0,8);
+      $("#node-input-goalId").val(id);
+    }
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="redclaw-goal">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom affiché</label>
+    <input type="text" id="node-input-name" placeholder="Conso mensuelle" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-goalId"><i class="fa fa-key"></i> ID</label>
+    <input type="text" id="node-input-goalId" style="font-family:monospace;width:60%;"
+      placeholder="energie_conso_mensuelle" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">Identifiant unique — stable entre redémarrages.</div>
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillName"><i class="fa fa-puzzle-piece"></i> Skill</label>
+    <input type="text" id="node-input-skillName" placeholder="energie" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">Skill propriétaire de cet objectif.</div>
+  </div>
+  <div class="form-row">
+    <label for="node-input-goalName"><i class="fa fa-bullseye"></i> Objectif</label>
+    <input type="text" id="node-input-goalName"
+      placeholder="Réduire consommation sous 200 kWh/mois" />
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:120px;">
+      <label for="node-input-priority" style="display:block;font-size:0.82em;color:#666;">Priorité</label>
+      <select id="node-input-priority" style="width:100%;">
+        <option value="critical">🔴 Critique</option>
+        <option value="high">🟠 Haute</option>
+        <option value="medium">🟡 Moyenne</option>
+        <option value="low">🟢 Basse</option>
+      </select>
+    </div>
+    <div style="flex:1;min-width:120px;">
+      <label for="node-input-direction" style="display:block;font-size:0.82em;color:#666;">Direction</label>
+      <select id="node-input-direction" style="width:100%;">
+        <option value="minimize">↓ Minimiser</option>
+        <option value="maximize">↑ Maximiser</option>
+        <option value="reach">→ Atteindre</option>
+      </select>
+    </div>
+    <div style="flex:0 0 80px;">
+      <label for="node-input-target" style="display:block;font-size:0.82em;color:#666;">Cible</label>
+      <input type="number" id="node-input-target" style="width:100%;" />
+    </div>
+    <div style="flex:0 0 60px;">
+      <label for="node-input-unit" style="display:block;font-size:0.82em;color:#666;">Unité</label>
+      <input type="text" id="node-input-unit" placeholder="kWh" style="width:100%;" />
+    </div>
+  </div>
+  <div style="margin-top:6px;"></div>
+
+  <div class="form-row">
+    <label for="node-input-metric"><i class="fa fa-tachometer"></i> Métrique</label>
+    <input type="text" id="node-input-metric" placeholder="kwh_monthly"
+      style="font-family:monospace;" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-deadline"><i class="fa fa-calendar"></i> Échéance</label>
+    <input type="date" id="node-input-deadline" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-goalCtx"><i class="fa fa-comment"></i> Contexte LLM</label>
+    <textarea id="node-input-goalCtx" rows="2"
+      style="width:100%;font-size:11px;border-radius:4px;border:1px solid #ccc;
+             padding:5px;resize:vertical;"
+      placeholder="Indications pour l'orchestrateur : optimiser le chauffage en priorité..."></textarea>
+  </div>
+
+  <div style="font-size:0.78em;background:#fffbe6;padding:8px;border-radius:5px;
+              border:1px solid #f0d060;line-height:1.8;margin-top:4px;">
+    <b>Câblage :</b><br/>
+    <code>[Capteur] ──► [Objectif] ──1──► [skill: energie] ──► [Orchestrateur]</code><br/>
+    <code>                           └──2──► [notification / dashboard]</code><br/><br/>
+    <b>Directions :</b>
+    ↓ <b>minimize</b> : on veut rester <i>sous</i> la cible (ex: conso &lt; 200 kWh)<br/>
+    ↑ <b>maximize</b> : on veut dépasser la cible (ex: confort &gt; 80%)<br/>
+    → <b>reach</b>   : on veut atteindre exactement la cible (ex: temp = 21°C)
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-goal">
+  <p><b>RedClaw — Objectif</b><br/>
+  Suit une métrique et injecte le contexte objectif dans les orchestrateurs connectés.</p>
+
+  <h3>Câblage typique</h3>
+  <pre style="font-size:10px;">
+[Capteur Enedis: 160 kWh]
+         ↓
+[Objectif: conso &lt; 200 kWh]    ← affiche 80% dans Node-RED
+    ├─ Output 1 ──► [skill: energie] ──► [Orchestrateur]
+    │               msg.redclaw_goal = { progress: 0.8, status: "active", ... }
+    └─ Output 2 ──► [notification]   ← déclenché quand 100% atteint
+  </pre>
+
+  <h3>msg produit en sortie</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">number</span></dt>
+    <dd>La valeur reçue (inchangée).</dd>
+    <dt>redclaw_goal <span class="property-type">object</span></dt>
+    <dd>État complet : name, progress, current, target, status, priority…</dd>
+  </dl>
+
+  <h3>Commandes (msg.redclaw_goal.action)</h3>
+  <dl class="message-properties">
+    <dt>get</dt><dd>Retourne l'état actuel sans modifier</dd>
+    <dt>pause</dt><dd>Met l'objectif en pause</dd>
+    <dt>reset</dt><dd>Remet la progression à zéro</dd>
+  </dl>
+</script>

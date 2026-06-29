@@ -1,0 +1,167 @@
+<script type="text/javascript">
+(function () {
+  RED.nodes.registerType("redclaw-hub", {
+    category: "neuro-red-claw",
+    color:    "#cba6f7",
+    defaults: {
+      name:      { value: "" },
+      skills:    { value: [] },
+      outputs:   { value: 1 },
+      timeout:   { value: 30000 },
+      memoryDir: { value: "" },
+      debugMode: { value: false },
+    },
+    inputs:  1,
+    outputs: 1,
+    icon:    "font-awesome/fa-sitemap",
+    label: function () {
+      const n = (this.skills || []).filter(s => s.name).length;
+      return this.name || `Hub (${n} skill${n > 1 ? "s" : ""})`;
+    },
+    outputLabels: function (i) {
+      const skills = (this.skills || []).filter(s => s.name);
+      if (i < skills.length) return `→ skill: ${skills[i].name}`;
+      return "⚡ Résultat → Orchestrateur";
+    },
+    inputLabels: "Délégation + retours orchestrateurs",
+
+    oneditprepare: function () {
+      const node = this;
+
+      // input hidden pour persistance outputs (même pattern que mcp-router)
+      $("#node-input-outputs").val(this.outputs || 1);
+
+      $("#node-input-skill-container").css("min-height","80px").editableList({
+        sortable: true, removable: true, addButton: "Ajouter un skill",
+        addItem: function (container, i, data) {
+          data = data || {};
+          const badge = $("<span>").css({
+            background:"#cba6f7", color:"#2a0a5a", borderRadius:"4px",
+            padding:"1px 8px", fontSize:"11px", fontWeight:"700", flexShrink:0,
+            minWidth:"22px", textAlign:"center", border:"1px solid #9a6fd8",
+          }).text(i + 1);
+          const nameInput = $("<input type='text'>")
+            .attr("placeholder", "nom-du-skill")
+            .css({ flex:"1", fontWeight:"600" })
+            .val(data.name || "");
+          const row = $("<div>").css({ display:"flex", gap:"6px", alignItems:"center" });
+          row.append(badge, nameInput);
+          container.append(row);
+          container.data("skillInput", nameInput);
+        },
+        removeItem: function () {
+          let i = 1;
+          $("#node-input-skill-container").editableList("items").each(function () {
+            $(this).find("span").first().text(i++);
+          });
+        },
+      });
+
+      (node.skills || []).forEach(s => $("#node-input-skill-container").editableList("addItem", s));
+
+      // Boutons de visualisation
+      $("#rc-hub-registry").on("click", () => {
+        fetch("/redclaw/hub").then(r=>r.json()).then(d => {
+          const lines = (d.skills||[]).map(s =>
+            `${s.status==="offline"?"⚫":"🟢"} ${s.name} · tools: ${s.tools||"—"}`
+          ).join("\n");
+          alert(`Registre (${(d.skills||[]).length}) :\n\n${lines||"Aucun"}`);
+        }).catch(e => RED.notify(e.message,"error"));
+      });
+      $("#rc-hub-goals").on("click", () => {
+        fetch("/redclaw/hub/goals").then(r=>r.json()).then(d => {
+          if (!d.goals?.length) return RED.notify("Aucun objectif","info");
+          const ICONS = {achieved:"✅",failed:"❌",paused:"⏸",active:"🎯"};
+          const lines = d.goals.map(g =>
+            `${ICONS[g.status]||"🎯"} [${g.priority}] ${g.name}\n   ${Math.round((g.progress||0)*100)}% — ${g.current??"-"}${g.unit}/${g.target}${g.unit}`
+          ).join("\n\n");
+          alert(`Objectifs :\n\n${lines}`);
+        }).catch(e => RED.notify(e.message,"error"));
+      });
+    },
+
+    oneditsave: function () {
+      const skills = [];
+      $("#node-input-skill-container").editableList("items").each(function () {
+        const inp = $(this).data("skillInput");
+        if (!inp) return;
+        const name = inp.val().trim();
+        if (name) skills.push({ name });
+      });
+      this.skills  = skills;
+      this.outputs = skills.length + 1;
+      $("#node-input-outputs").val(this.outputs);
+    },
+
+    oneditresize: function (size) {
+      const h = size.height
+        - $("#dialog-form .form-row:not(.rc-hub-row)").toArray()
+            .reduce((a,el)=>a+$(el).outerHeight(true),0) - 40;
+      $("#node-input-skill-container").editableList("height", Math.max(h,80));
+    },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="redclaw-hub">
+  <input type="hidden" id="node-input-outputs" />
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Hub Cognitif" style="width:70%;" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="5000" step="5000" style="width:120px;" />
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-debugMode" style="width:auto;" />
+    <label for="node-input-debugMode" style="width:auto;margin-left:5px;">Logs debug</label>
+  </div>
+
+  <div class="form-row rc-hub-row" style="margin-bottom:0;">
+    <label><i class="fa fa-puzzle-piece"></i> Skills câblés</label>
+    <div style="font-size:0.78em;color:#888;margin-bottom:4px;line-height:1.5;">
+      Chaque ligne = une sortie câblée vers l'entrée d'un skill.<br/>
+      Câbler aussi Output 2 de chaque orchestrateur enfant sur l'entrée du Hub.
+    </div>
+  </div>
+  <div class="form-row rc-hub-row" style="margin-top:0;">
+    <ol id="node-input-skill-container"></ol>
+  </div>
+
+  <div style="font-size:0.78em;background:#f0e8ff;padding:7px;border-radius:4px;
+              border:1px solid #cba6f7;line-height:1.8;margin-top:4px;">
+    <b>Câblage :</b><br/>
+    Sortie 1 ──► <code>[skill: energie]</code> → <code>[Orch Energie]</code> Output2 ──► Hub<br/>
+    Sortie 2 ──► <code>[skill: confort]</code> → <code>[Orch Confort]</code> Output2 ──► Hub<br/>
+    Sortie ⚡ ──► <code>[Orchestrateur CEO]</code> entrée
+  </div>
+
+  <div class="form-row" style="margin-top:8px;display:flex;gap:6px;">
+    <button id="rc-hub-registry" class="red-ui-button" style="flex:1;font-size:11px;">
+      <i class="fa fa-list"></i> Registre skills
+    </button>
+    <button id="rc-hub-goals" class="red-ui-button" style="flex:1;font-size:11px;">
+      <i class="fa fa-bullseye"></i> Objectifs
+    </button>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-hub">
+  <p><b>RedClaw — Hub Cognitif</b><br/>
+  Routeur entre agents. Même principe que le MCP Router mais pour les skills.</p>
+  <h3>Câblage complet</h3>
+  <pre style="font-size:10px;">
+[Orch CEO] Output1 ──► [Hub]
+  ├─ 1 ──► [skill: energie] ──► [Orch Energie]
+  │                                   ↓ Output2 ──► [Hub] entrée
+  ├─ 2 ──► [skill: confort] ──► [Orch Confort]
+  │                                   ↓ Output2 ──► [Hub] entrée
+  └─ ⚡ ──────────────────────────────────────► [Orch CEO] entrée
+  </pre>
+  <h3>Actions (msg.redclaw_hub.action)</h3>
+  <dl class="message-properties">
+    <dt>"delegate" + .target + .question</dt><dd>Délègue au skill cible</dd>
+    <dt>"context"</dt><dd>Retourne le snapshot cross-skills sur ⚡</dd>
+  </dl>
+</script>

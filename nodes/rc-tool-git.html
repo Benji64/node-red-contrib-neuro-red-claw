@@ -1,0 +1,49 @@
+<script type="text/javascript">
+RED.nodes.registerType("rc-tool-git", {
+  category: "neuro-red-claw",
+  color:    "#f9e2af",
+  defaults: {
+    name:    { value: "" },
+    workDir: { value: "" },
+    timeout: { value: 30000 },
+  },
+  inputs:  1,
+  outputs: 1,
+  icon:    "font-awesome/fa-code-fork",
+  outputLabels: ["→ MCP Router"],
+  inputLabels:  "Depuis MCP Router",
+  label: function () { return this.name || "Git"; },
+});
+</script>
+
+<script type="text/html" data-template-name="rc-tool-git">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Git" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-workDir"><i class="fa fa-folder"></i> Répertoire</label>
+    <input type="text" id="node-input-workDir" placeholder="~/mon-projet (défaut: home)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+  <div style="font-size:0.78em;color:#555;background:#f8f8f8;padding:8px;border-radius:5px;margin-top:6px;line-height:1.6;">
+    <b>Opérations git : status, diff, log, add, commit, branch…</b><br/>
+    <b>Câblage :</b> <code>[MCP Router] ──► [Git] ──► [MCP Router]</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="rc-tool-git">
+  <p><b>RedClaw Coding — Git</b><br/>Opérations git : status, diff, log, add, commit, branch…</p>
+  <h3>Paramètres (msg.payload)</h3>
+  <dl class="message-properties">
+    <dt>operation <span class="property-type">string</span></dt><dd>status | diff | log | add | commit | branch | checkout | push | pull</dd>
+    <dt>args <span class="property-type">string</span></dt><dd>Arguments supplémentaires (optionnel)</dd>
+    <dt>message <span class="property-type">string</span></dt><dd>Message de commit (requis pour commit)</dd>
+    <dt>files <span class="property-type">string</span></dt><dd>Fichiers pour git add (défaut: .)</dd>
+  </dl>
+  <h3>Résultat (msg.payload en sortie)</h3>
+  <p>Retourné vers le MCP Router via <code>redclaw_call_id</code>.</p>
+</script>

@@ -1,0 +1,170 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-embed", {
+  category: "neuro-red-claw",
+  color:    "#a6e3a1",
+  defaults: {
+    name:        { value: "" },
+    embedConfig: { value: "", type: "embed-config" },
+    mode:        { value: "both" },
+    storeName:   { value: "default" },
+    storeDir:    { value: "" },
+    k:           { value: 5 },
+    threshold:   { value: 0.5 },
+    maxChars:    { value: 2000 },
+    maxDocs:     { value: 10000 },
+    metaFields:  { value: "sessionId,skill,role" },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-database",
+  outputLabels: [
+    "→ Contexte sémantique (embed_context) → orchestrateur",
+    "→ Rien trouvé / Erreur",
+  ],
+  inputLabels: "Texte à vectoriser",
+  label: function () {
+    const modes = { store:"📥 Store", search:"🔍 Search", both:"📥🔍 Both", auto:"⚡ Auto" };
+    return this.name || `Embed ${modes[this.mode]||""} · ${this.storeName}`;
+  },
+
+  oneditprepare: function () {
+    function toggleMode() {
+      const m = $("#node-input-mode").val();
+      $(".rc-embed-search").toggle(m === "search" || m === "both" || m === "auto");
+    }
+    $("#node-input-mode").on("change", toggleMode);
+    toggleMode();
+
+    $("#rc-embed-stats").on("click", function () {
+      const name = $("#node-input-storeName").val() || "default";
+      fetch(`/redclaw/vectors/${name}`)
+        .then(r=>r.json())
+        .then(d => RED.notify(
+          `Store "${d.name}" : ${d.docs} docs · ${d.dims} dims`, "info"
+        ))
+        .catch(e => RED.notify(e.message, "error"));
+    });
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-embed">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Mémoire sémantique" />
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-embedConfig"><i class="fa fa-cube"></i> Config Embedding</label>
+    <input type="text" id="node-input-embedConfig" />
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-mode"><i class="fa fa-random"></i> Mode</label>
+    <select id="node-input-mode" style="width:75%;">
+      <option value="both">📥🔍 Store + Search (mémoire complète)</option>
+      <option value="store">📥 Store uniquement (indexation)</option>
+      <option value="search">🔍 Search uniquement (récupération)</option>
+      <option value="auto">⚡ Auto (msg.embed_action)</option>
+    </select>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-storeName"><i class="fa fa-database"></i> Nom du store</label>
+    <input type="text" id="node-input-storeName" placeholder="default"
+      style="width:60%;font-family:monospace;" />
+    <button id="rc-embed-stats" class="red-ui-button"
+      style="width:auto;margin-left:6px;font-size:11px;">
+      <i class="fa fa-bar-chart"></i> Stats
+    </button>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-maxDocs"><i class="fa fa-list-ol"></i> Max docs</label>
+    <input type="number" id="node-input-maxDocs" min="100" step="1000"
+      style="width:100px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">
+      documents conservés (FIFO)
+    </span>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="rc-embed-search">
+    <div style="font-size:0.82em;color:#666;margin-bottom:6px;font-weight:600;">
+      Paramètres de recherche
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:80px;">
+        <label style="display:block;font-size:0.82em;color:#666;">Top-K résultats</label>
+        <input type="number" id="node-input-k" min="1" max="20"
+          style="width:100%;" />
+      </div>
+      <div style="flex:1;min-width:80px;">
+        <label style="display:block;font-size:0.82em;color:#666;">Seuil similarité</label>
+        <input type="number" id="node-input-threshold" min="0" max="1"
+          step="0.05" style="width:100%;" />
+      </div>
+      <div style="flex:1;min-width:80px;">
+        <label style="display:block;font-size:0.82em;color:#666;">Max chars contexte</label>
+        <input type="number" id="node-input-maxChars" min="200" step="200"
+          style="width:100%;" />
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:6px;">
+      <label for="node-input-metaFields"><i class="fa fa-filter"></i> Métadonnées</label>
+      <input type="text" id="node-input-metaFields"
+        placeholder="sessionId,skill,role" style="font-family:monospace;" />
+      <div style="font-size:0.78em;color:#888;">Champs du msg copiés dans les métadonnées</div>
+    </div>
+  </div>
+
+  <div style="font-size:0.78em;background:#e8f8e8;padding:8px;border-radius:5px;
+              border:1px solid #a6e3a1;line-height:1.8;margin-top:6px;">
+    <b>Réduction du contexte :</b><br/>
+    Sliding window 20 msgs = ~4000 chars → Embedding top-5 = ~800 chars pertinents<br/>
+    <b>Gain : -80% tokens · +pertinence sémantique</b><br/><br/>
+    <b>Câblage :</b><br/>
+    <code>[skill] ──► [neuro-embed: both] ──1──► [redclaw-orchestrator]</code><br/>
+    <code>[redclaw-orchestrator] Output2 ──► [neuro-embed: store]</code><br/>
+    <code>msg.embed_context injecté dans le system prompt</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-embed">
+  <p><b>neuro-red-claw — Embed</b><br/>
+  Mémoire sémantique vectorielle. Remplace le sliding window par une
+  recherche pertinente qui réduit les tokens de 80%.</p>
+
+  <h3>Câblage mémoire sémantique</h3>
+  <pre style="font-size:10px;">
+[redclaw-skill] ──► [neuro-embed: both]
+                        ├─ 1 ──► [redclaw-orchestrator]
+                        │        msg.embed_context = contexte pertinent
+                        └─ 2 ──► [log: rien trouvé]
+
+[redclaw-orchestrator] Output2 ──► [neuro-embed: store]
+  (stocke les réponses pour les futures recherches)
+  </pre>
+
+  <h3>msg produit (Output 1)</h3>
+  <dl class="message-properties">
+    <dt>embed_context <span class="property-type">string</span></dt>
+    <dd>Contexte compact prêt à injecter dans le system prompt.</dd>
+    <dt>embed_results <span class="property-type">array</span></dt>
+    <dd>Résultats détaillés avec score de similarité.</dd>
+    <dt>embed_retrieved <span class="property-type">number</span></dt>
+    <dd>Nombre de documents trouvés.</dd>
+    <dt>embed_chars <span class="property-type">number</span></dt>
+    <dd>Taille du contexte injecté.</dd>
+  </dl>
+
+  <h3>Intégration orchestrateur</h3>
+  <p>Le <code>msg.embed_context</code> est automatiquement lu par
+  <code>redclaw-orchestrator</code> et ajouté au system prompt
+  avant l'appel LLM.</p>
+
+  <h3>Persistance</h3>
+  <p>Les vecteurs sont sauvegardés dans
+  <code>~/.node-red/redclaw-vectors/{storeName}.json</code></p>
+</script>

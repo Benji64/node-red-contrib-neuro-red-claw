@@ -1,0 +1,144 @@
+<script type="text/javascript">
+(function () {
+  RED.nodes.registerType("mcp-router", {
+    category: "neuro-red-claw",
+    color:    "#f9e2af",
+    defaults: {
+      name:      { value: "" },
+      tools:     { value: [] },
+      timeout:   { value: 15000 },
+      debugMode: { value: false },
+      outputs:   { value: 1 },   // persisté → Node-RED recrée les ports droits au redémarrage
+    },
+    inputs:  1,
+    outputs: 1,
+    icon:    "font-awesome/fa-random",
+    label: function () {
+      const n = (this.tools || []).filter(t => t.name).length;
+      return this.name || `MCP Router (${n} tool${n > 1 ? "s" : ""})`;
+    },
+    outputLabels: function (i) {
+      const tools = (this.tools || []).filter(t => t.name);
+      if (i < tools.length) return `→ adapter: ${tools[i].name}`;
+      return "⚡ Retour Orchestrateur";
+    },
+
+    oneditprepare: function () {
+      const node = this;
+
+      // Initialise le champ hidden avec la valeur persistée
+      $("#node-input-outputs").val(this.outputs || 1);
+
+      $("#node-input-tool-container").css("min-height", "80px").editableList({
+        sortable:  true,
+        removable: true,
+        addButton: "Ajouter un tool",
+        addItem: function (container, i, data) {
+          data = data || {};
+          container.css({ padding: "6px 4px" });
+          const badge = $("<span>")
+            .css({ background:"#f9e2af", color:"#7a5c00", borderRadius:"4px",
+                   padding:"1px 8px", fontSize:"11px", fontWeight:"700",
+                   flexShrink:0, minWidth:"22px", textAlign:"center",
+                   border:"1px solid #e0c060" })
+            .text(i + 1);
+          const nameInput = $("<input type='text'>")
+            .attr("placeholder", "nom_tool")
+            .css({ flex:"1", fontWeight:"600", fontFamily:"monospace" })
+            .val(data.name || "");
+          const row = $("<div>").css({ display:"flex", gap:"6px", alignItems:"center" });
+          row.append(badge, nameInput);
+          container.append(row);
+          container.data("toolInput", nameInput);
+        },
+        removeItem: function () {
+          let i = 1;
+          $("#node-input-tool-container").editableList("items").each(function () {
+            $(this).find("span").first().text(i++);
+          });
+        },
+      });
+      (node.tools || []).forEach(t => {
+        $("#node-input-tool-container").editableList("addItem", t);
+      });
+    },
+
+    oneditsave: function () {
+      const tools = [];
+      $("#node-input-tool-container").editableList("items").each(function () {
+        const inp = $(this).data("toolInput");
+        if (!inp) return;
+        const name = inp.val().trim();
+        if (name) tools.push({ name });
+      });
+      this.tools   = tools;
+      this.outputs = tools.length + 1;
+      // Met à jour le champ hidden — Node-RED le lie à defaults.outputs au save
+      $("#node-input-outputs").val(this.outputs);
+    },
+
+    oneditresize: function (size) {
+      const h = size.height
+        - $("#dialog-form .form-row:not(.rc-router-row)").toArray()
+            .reduce((a, el) => a + $(el).outerHeight(true), 0)
+        - 40;
+      $("#node-input-tool-container").editableList("height", Math.max(h, 80));
+    },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="mcp-router">
+  <!-- Input hidden obligatoire : Node-RED bind defaults.outputs via id="node-input-outputs" -->
+  <input type="hidden" id="node-input-outputs" />
+
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="MCP Router" style="width:70%;" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+  <div class="form-row rc-router-row" style="margin-bottom:0;">
+    <label><i class="fa fa-random"></i> Tools</label>
+    <div style="font-size:0.78em;color:#888;margin-bottom:4px;line-height:1.5;">
+      Chaque ligne = une sortie numérotée → câbler vers un <b>[mcp-adapter]</b>.<br/>
+      La sortie <b>⚡</b> retourne vers l'Orchestrateur.
+    </div>
+  </div>
+  <div class="form-row rc-router-row" style="margin-top:0;">
+    <ol id="node-input-tool-container"></ol>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-debugMode" style="width:auto;" />
+    <label for="node-input-debugMode" style="width:auto;margin-left:5px;">
+      <i class="fa fa-bug"></i> Logs debug (warn dans Node-RED)
+    </label>
+  </div>
+
+  <div style="font-size:0.78em;background:#fffbe6;padding:7px;border-radius:4px;
+              border:1px solid #f0d060;line-height:1.8;margin-top:4px;">
+    <b>msg.routeur en sortie</b> : <code>{ tool, params, callId }</code><br/>
+    L'adapter lit <code>msg.routeur.tool</code> pour confirmer son tool.<br/>
+    L'adapter retourne <code>msg.adaptateur</code> sur le Router.<br/>
+    Le Router lit <code>msg.adaptateur</code> → envoie sur ⚡.
+  </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-router">
+  <p><b>RedClaw — MCP Router</b><br/>
+  N sorties (une par tool) + ⚡ retour orchestrateur.</p>
+  <h3>Câblage</h3>
+  <pre style="font-size:10px;">
+[Orchestrateur] ──► [MCP Router]
+  ├─ 1 ──► [mcp-adapter: turn_on]    ──► [tuya] ──► [mcp-adapter] ──Output 2──► [MCP Router]
+  ├─ 2 ──► [mcp-adapter: turn_off]   ──► [tuya] ──► [mcp-adapter] ──Output 2──► [MCP Router]
+  └─ ⚡ ──────────────────────────────────────────────────────────────────────────► [Orchestrateur]
+  </pre>
+  <h3>Protocole</h3>
+  <dl class="message-properties">
+    <dt>msg.routeur (sortie)</dt><dd>{ tool, params, callId } → lu par l'adapter</dd>
+    <dt>msg.adaptateur (entrée)</dt><dd>Résultat retourné par l'adapter</dd>
+  </dl>
+</script>

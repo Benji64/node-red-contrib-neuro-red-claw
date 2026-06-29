@@ -1,0 +1,48 @@
+<script type="text/javascript">
+RED.nodes.registerType("rc-tool-list-dir", {
+  category: "neuro-red-claw",
+  color:    "#89dceb",
+  defaults: {
+    name:    { value: "" },
+    workDir: { value: "" },
+    timeout: { value: 30000 },
+  },
+  inputs:  1,
+  outputs: 1,
+  icon:    "font-awesome/fa-folder-open",
+  outputLabels: ["→ MCP Router"],
+  inputLabels:  "Depuis MCP Router",
+  label: function () { return this.name || "List Dir"; },
+});
+</script>
+
+<script type="text/html" data-template-name="rc-tool-list-dir">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="List Dir" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-workDir"><i class="fa fa-folder"></i> Répertoire</label>
+    <input type="text" id="node-input-workDir" placeholder="~/mon-projet (défaut: home)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+  <div style="font-size:0.78em;color:#555;background:#f8f8f8;padding:8px;border-radius:5px;margin-top:6px;line-height:1.6;">
+    <b>Liste le contenu d'un dossier.</b><br/>
+    <b>Câblage :</b> <code>[MCP Router] ──► [List Dir] ──► [MCP Router]</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="rc-tool-list-dir">
+  <p><b>RedClaw Coding — List Dir</b><br/>Liste le contenu d'un dossier.</p>
+  <h3>Paramètres (msg.payload)</h3>
+  <dl class="message-properties">
+    <dt>path <span class="property-type">string</span></dt><dd>Dossier à lister (optionnel, défaut: workDir)</dd>
+    <dt>recursive <span class="property-type">string</span></dt><dd>true pour lister récursivement</dd>
+    <dt>max_depth <span class="property-type">string</span></dt><dd>Profondeur max si récursif (défaut: 2)</dd>
+  </dl>
+  <h3>Résultat (msg.payload en sortie)</h3>
+  <p>Retourné vers le MCP Router via <code>redclaw_call_id</code>.</p>
+</script>

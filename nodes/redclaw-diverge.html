@@ -1,0 +1,137 @@
+<script type="text/javascript">
+(function () {
+  RED.nodes.registerType("redclaw-diverge", {
+    category: "neuro-red-claw",
+    color:    "#cba6f7",
+    defaults: {
+      name:     { value: "" },
+      lenses:   { value: [] },
+      outputs:  { value: 1 },
+      timeout:  { value: 30000 },
+      strategy: { value: "wait_all" },
+    },
+    inputs:  1,
+    outputs: 1,
+    icon:    "font-awesome/fa-code-fork",
+    label: function () {
+      const n = (this.lenses || []).filter(l => l.name).length;
+      return this.name || `Diverge (${n} perspective${n>1?"s":""})`;
+    },
+    outputLabels: function (i) {
+      const ls = (this.lenses || []).filter(l => l.name);
+      if (i < ls.length) return `→ ${ls[i].name}`;
+      return "⚡ Agrégation → convergence";
+    },
+    inputLabels: "Signal + retours des branches",
+
+    oneditprepare: function () {
+      $("#node-input-outputs").val(this.outputs || 1);
+
+      $("#node-input-lens-container").css("min-height","100px").editableList({
+        sortable: true, removable: true, addButton: "Ajouter une perspective",
+        addItem: function (container, i, data) {
+          data = data || {};
+          const badge = $("<span>").css({
+            background:"#cba6f7", color:"#2a0a5a", borderRadius:"4px",
+            padding:"1px 7px", fontSize:"11px", fontWeight:"700", flexShrink:0,
+          }).text(i + 1);
+
+          const nameInput = $("<input type='text'>")
+            .attr("placeholder", "angle-economique")
+            .css({ flex:"1", fontWeight:"600" })
+            .val(data.name || "");
+
+          const promptInput = $("<input type='text'>")
+            .attr("placeholder", "Analyse sous l'angle économique et budgétaire")
+            .css({ flex:"2", fontSize:"11px", color:"#888" })
+            .val(data.prompt || "");
+
+          const row = $("<div>").css({ display:"flex", gap:"6px", alignItems:"center", padding:"4px 0" });
+          row.append(badge, nameInput, promptInput);
+          container.append(row);
+          container.data("lensData", { badge, nameInput, promptInput });
+        },
+        removeItem: function () {
+          let i = 1;
+          $("#node-input-lens-container").editableList("items").each(function () {
+            $(this).find("span").first().text(i++);
+          });
+        },
+      });
+
+      (this.lenses || []).forEach(l =>
+        $("#node-input-lens-container").editableList("addItem", l)
+      );
+    },
+
+    oneditsave: function () {
+      const lenses = [];
+      $("#node-input-lens-container").editableList("items").each(function () {
+        const d = $(this).data("lensData");
+        if (!d) return;
+        const name = d.nameInput.val().trim();
+        if (name) lenses.push({ name, prompt: d.promptInput.val().trim() });
+      });
+      this.lenses  = lenses;
+      this.outputs = lenses.length + 1;
+      $("#node-input-outputs").val(this.outputs);
+    },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="redclaw-diverge">
+  <input type="hidden" id="node-input-outputs" />
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Diverge" style="width:70%;" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-strategy"><i class="fa fa-random"></i> Stratégie</label>
+    <select id="node-input-strategy" style="width:75%;">
+      <option value="wait_all">Attendre toutes les réponses</option>
+      <option value="first_wins">Première réponse gagne</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="5000" step="5000" style="width:110px;" />
+  </div>
+
+  <div class="form-row" style="margin-bottom:4px;">
+    <label><i class="fa fa-code-fork"></i> Perspectives cognitives</label>
+    <div style="font-size:0.78em;color:#888;margin-bottom:4px;line-height:1.5;">
+      Chaque ligne = une sortie câblée vers un skill différent.<br/>
+      Le <b>cadrage</b> est injecté dans <code>msg.redclaw_frame_prompt</code><br/>
+      pour enrichir le contexte de l'orchestrateur.
+    </div>
+  </div>
+  <div class="form-row" style="margin-top:0;">
+    <ol id="node-input-lens-container"></ol>
+  </div>
+
+  <div style="font-size:0.78em;background:#f0e8ff;padding:7px;border-radius:4px;
+              border:1px solid #cba6f7;line-height:1.8;margin-top:4px;">
+    <b>Câblage :</b><br/>
+    <code>[Signal] ──► [Diverge]</code><br/>
+    <code>  ├─ 1 ──► [skill: économique] ──► [Orch A] Output2 ──► [Diverge]</code><br/>
+    <code>  ├─ 2 ──► [skill: sécurité]   ──► [Orch B] Output2 ──► [Diverge]</code><br/>
+    <code>  └─ ⚡ ──► [skill: synthèse]  ──► [Orch convergence]</code><br/><br/>
+    Les orchestrateurs renvoient via<br/>
+    <code>msg.redclaw_diverge_return = { divergeId, lensName, response }</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-diverge">
+  <p><b>neuro-red-claw — Diverge</b><br/>
+  Pensée divergente : envoie le même signal sur N perspectives simultanément.<br/>
+  Agrège les réponses sur la sortie ⚡ pour la convergence.</p>
+  <h3>Retour des branches</h3>
+  <p>Chaque orchestrateur connecté doit renvoyer :<br/>
+  <code>msg.redclaw_diverge_return = {</code><br/>
+  <code>  divergeId: msg.redclaw_diverge_id,</code><br/>
+  <code>  lensName:  msg.redclaw_lens.name,</code><br/>
+  <code>  response:  msg.payload</code><br/>
+  <code>}</code></p>
+  <p>Utiliser un nœud <code>change</code> après Output2 de l'orchestrateur.</p>
+</script>

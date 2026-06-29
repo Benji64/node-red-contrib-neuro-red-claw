@@ -1,0 +1,250 @@
+<script type="text/javascript">
+(function () {
+
+  const EXEMPLES = {
+    tuya_switch: {
+      label: "Tuya prise/interrupteur",
+      input: `// msg.routeur.params contient les params du LLM
+// msg.adaptateur.callId est déjà défini (ne pas le modifier)
+const devId      = "TON_DEVICE_ID";
+const deviceName = "Mon appareil";
+
+if (msg.routeur.params.status === "true" || msg.routeur.params.state === "ON") {
+  msg.payload = { dps: 1, set: true };
+} else {
+  msg.payload = { dps: 1, set: false };
+}
+// msg.redclaw_call_id préservé automatiquement
+return msg;`,
+      output: `// msg.payload = résultat brut du nœud Tuya
+// msg.adaptateur.callId est déjà injecté automatiquement — ne pas le supprimer
+const etat = msg.payload?.data?.dps?.["1"];
+if (etat === true)       msg.adaptateur.state   = "ON";
+else if (etat === false) msg.adaptateur.state   = "OFF";
+msg.adaptateur.success = true;
+return msg;`,
+    },
+    tuya_light: {
+      label: "Tuya ampoule (brightness)",
+      input: `const devId = "TON_DEVICE_ID";
+const p     = msg.routeur.params;
+const state = String(p.state||"ON").toUpperCase() === "ON";
+const level = p.brightness ? Math.max(10, Math.min(1000, Math.round(p.brightness*10))) : undefined;
+const dps   = { "1": state };
+if (level) dps["2"] = level;
+msg.payload = {
+  data: { devId, dps, t: Math.floor(Date.now()/1000) },
+  deviceId: devId, deviceName: "Ampoule",
+};
+return msg;`,
+      output: `const dps = msg.payload?.data?.dps || {};
+adaptateur.success    = true;
+adaptateur.state      = dps["1"] ? "ON" : "OFF";
+adaptateur.brightness = dps["2"] ? Math.round(dps["2"] / 10) : undefined;`,
+    },
+    http: {
+      label: "HTTP Request",
+      input: `msg.method  = "POST";
+msg.url     = msg.routeur.params.url || "http://mon-api/endpoint";
+msg.payload = msg.routeur.params.body || {};
+return msg;`,
+      output: `adaptateur.success    = msg.statusCode >= 200 && msg.statusCode < 300;
+adaptateur.statusCode = msg.statusCode;
+adaptateur.data       = msg.payload;`,
+    },
+    mqtt: {
+      label: "MQTT publish",
+      input: `msg.topic   = msg.routeur.params.topic || "home/device/set";
+msg.payload = JSON.stringify(msg.routeur.params.data || {});
+return msg;`,
+      output: `adaptateur.success   = true;
+adaptateur.published = true;`,
+    },
+  };
+
+  RED.nodes.registerType("mcp-adapter", {
+    category: "neuro-red-claw",
+    color:    "#89dceb",
+    defaults: {
+      name:            { value: "" },
+      toolName:        { value: "" },
+      simpleMode:      { value: false },
+      debugMode:       { value: false },
+      inputTransform:  { value: "" },
+      outputTransform:  { value: "" },
+      validateResponse: { value: "" },
+      timeout:         { value: 15000 },
+    },
+    inputs:  1,
+    outputs: 2,
+    icon:    "font-awesome/fa-exchange",
+    outputLabels: [
+      "→ Nœud Node-RED cible",
+      "→ MCP Router (msg.adaptateur + callId)",
+    ],
+    inputLabels: "Depuis MCP Router + retour nœud",
+    label: function () {
+      return this.name || (this.toolName ? `adapter: ${this.toolName}` : "MCP Adapter");
+    },
+    labelStyle: function () { return this.name ? "node_label_italic" : ""; },
+
+    oneditprepare: function () {
+      // Toggle mode simple / code
+      function toggleMode() {
+        const simple = $("#node-input-simpleMode").is(":checked");
+        $(".rc-adp-code").toggle(!simple);
+        $(".rc-adp-simple").toggle(simple);
+      }
+      $("#node-input-simpleMode").on("change", toggleMode);
+      toggleMode();
+
+      // Boutons exemples
+      Object.entries(EXEMPLES).forEach(([key, ex]) => {
+        $(`#rc-ex-${key}`).on("click", function () {
+          if (confirm(`Charger l'exemple "${ex.label}" ?`)) {
+            $("#node-input-simpleMode").prop("checked", false).trigger("change");
+            $("#node-input-inputTransform").val(ex.input);
+            $("#node-input-outputTransform").val(ex.output);
+            if (ex.validate) $("#node-input-validateResponse").val(ex.validate);
+          }
+        });
+      });
+    },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="mcp-adapter">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Adapter turn_on" />
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-toolName"><i class="fa fa-wrench"></i> Nom du tool</label>
+    <input type="text" id="node-input-toolName"
+      placeholder="turn_on" style="font-family:monospace;font-weight:600;" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Doit correspondre exactement au nom dans le MCP Router.
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <!-- Mode simple -->
+  <div class="form-row">
+    <input type="checkbox" id="node-input-simpleMode" style="width:auto;" />
+    <label for="node-input-simpleMode" style="width:auto;margin-left:5px;">
+      <i class="fa fa-toggle-on"></i> Mode simple — passer msg.payload sans transformation
+    </label>
+    <div class="rc-adp-simple" style="display:none;font-size:0.78em;color:#555;
+         background:#f0fff0;padding:6px;border-radius:4px;border:1px solid #a6e3a1;margin-top:5px;">
+      msg.payload = params du LLM transmis directement au nœud Node-RED.<br/>
+      Utiliser uniquement si le nœud cible accepte les params tels quels.
+    </div>
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-debugMode" style="width:auto;" />
+    <label for="node-input-debugMode" style="width:auto;margin-left:5px;">
+      <i class="fa fa-bug"></i> Logs debug (warn dans Node-RED)
+    </label>
+  </div>
+
+  <!-- Mode code -->
+  <div class="rc-adp-code">
+    <div class="form-row" style="margin-bottom:5px;">
+      <label><i class="fa fa-magic"></i> Exemples</label>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">
+        <button id="rc-ex-tuya_switch" class="red-ui-button" style="font-size:10px;padding:2px 6px;">Tuya prise</button>
+        <button id="rc-ex-tuya_light"  class="red-ui-button" style="font-size:10px;padding:2px 6px;">Tuya ampoule</button>
+      <button id="rc-ex-tuya_hub"    class="red-ui-button" style="font-size:10px;padding:2px 6px;color:#f9e2af;">Tuya hub</button>
+        <button id="rc-ex-http"        class="red-ui-button" style="font-size:10px;padding:2px 6px;">HTTP</button>
+        <button id="rc-ex-mqtt"        class="red-ui-button" style="font-size:10px;padding:2px 6px;">MQTT</button>
+      </div>
+    </div>
+
+    <!-- Transformation entrée -->
+    <div class="form-row">
+      <label><i class="fa fa-arrow-right"></i> Transformation entrée</label>
+      <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
+        Disponible dans le code :<br/>
+        <code>msg.payload</code> = params du LLM &nbsp;|&nbsp;
+        <code>msg.routeur.params</code> = même chose &nbsp;|&nbsp;
+        <code>msg.routeur.tool</code> = nom du tool<br/>
+        <code>msg.adaptateur.callId</code> = callId (déjà injecté, <b>ne pas modifier</b>)<br/>
+        Faire <code>return msg;</code>
+      </div>
+      <textarea id="node-input-inputTransform" rows="6"
+        style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
+               border:1px solid #ccc;padding:5px;resize:vertical;box-sizing:border-box;"
+        placeholder="if (msg.routeur.params.status === 'true') {&#10;  msg.payload = { dps: 1, set: true };&#10;} else {&#10;  msg.payload = { dps: 1, set: false };&#10;}&#10;return msg;"></textarea>
+    </div>
+
+    <!-- Transformation sortie -->
+    <div class="form-row">
+      <label><i class="fa fa-arrow-left"></i> Transformation sortie</label>
+      <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
+        <code>msg.payload</code> = résultat brut du nœud Node-RED<br/>
+        <code>msg.adaptateur</code> pré-initialisé avec <code>{ callId }</code><br/>
+        Ajouter les propriétés dans <code>msg.adaptateur</code> puis <code>return msg;</code><br/>
+        <b>Ne pas écraser</b> <code>msg.adaptateur</code> entièrement (le callId serait perdu).
+      </div>
+      <textarea id="node-input-outputTransform" rows="5"
+        style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
+               border:1px solid #ccc;padding:5px;resize:vertical;box-sizing:border-box;"
+        placeholder="// Ajouter dans msg.adaptateur (ne pas remplacer entièrement)&#10;msg.adaptateur.success = true;&#10;msg.adaptateur.state   = msg.payload?.data?.dps?.['1'] ? 'ON' : 'OFF';&#10;return msg;"></textarea>
+    </div>
+
+    <!-- ── Filtre de corrélation ─────────────────────────────────────────── -->
+    <div class="form-row">
+      <label><i class="fa fa-filter"></i> Filtre de corrélation
+        <small style="color:#888;font-weight:normal;"> — optionnel</small>
+      </label>
+      <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
+        Corrèle la vraie réponse dans un flux de messages mixtes.<br/>
+        Retourner <code>true</code> → accepté · <code>false</code> → ignoré, attend le suivant.<br/>
+        <b>Cas d'usage :</b> hub multi-capteurs · MQTT multi-topics ·
+        WebSocket stream · port série · webhook · toute source émettant des messages non sollicités.
+      </div>
+      <textarea id="node-input-validateResponse" rows="4"
+        style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
+               border:1px solid #89dceb;padding:5px;resize:vertical;box-sizing:border-box;"
+        placeholder="// Retourner true = réponse attendue, false = ignorer et attendre&#10;&#10;// Hub multi-capteurs (ex: Tuya) — filtre par DPS ciblé :&#10;// return msg.payload?.data?.dps?.['1'] !== undefined;&#10;&#10;// MQTT multi-topics :&#10;// return msg.topic === 'home/device/status';&#10;&#10;// WebSocket — filtre par type d'événement :&#10;// return msg.payload?.type === 'command_result';"></textarea>
+    </div>
+  </div>
+
+  <div style="font-size:0.78em;background:#e8f8ff;padding:7px;border-radius:5px;
+              border:1px solid #89dceb;line-height:1.7;margin-top:4px;">
+    <b>Câblage :</b><br/>
+    <code>[MCP Router sortie N] ──► [mcp-adapter] ──1──► [nœud Node-RED] ──► [mcp-adapter]</code><br/>
+    <code>[mcp-adapter] ──2──► [MCP Router] entrée</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="mcp-adapter">
+  <p><b>RedClaw — MCP Adapter</b></p>
+
+  <h3>Protocole msg</h3>
+  <dl class="message-properties">
+    <dt>msg.routeur <span class="property-type">object</span></dt>
+    <dd>Reçu du Router : { tool, params, callId }. Accessible dans inputTransform.</dd>
+    <dt>msg.adaptateur <span class="property-type">object</span></dt>
+    <dd>Pré-initialisé avec { callId }. Enrichir dans outputTransform (ne pas remplacer).</dd>
+  </dl>
+
+  <h3>outputTransform — variable adaptateur</h3>
+  <p>La variable <code>adaptateur</code> est disponible directement :<br/>
+  <code>adaptateur.success = true;</code><br/>
+  <code>adaptateur.state = msg.payload?.data?.dps?.["1"] ? "ON" : "OFF";</code><br/>
+  Pas de <code>return</code> nécessaire. Le <code>callId</code> est injecté automatiquement.</p>
+
+  <h3>Vérification callId</h3>
+  <p>Le MCP Router vérifie <code>msg.adaptateur.callId</code> avant de continuer.
+  Si le callId est absent ou incorrect, le résultat est ignoré.</p>
+</script>

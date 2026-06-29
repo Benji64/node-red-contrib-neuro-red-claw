@@ -1,0 +1,80 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-chat", {
+  category: "neuro-red-claw",
+  color:    "#89dceb",
+  defaults: {
+    name:        { value: "" },
+    skillTarget: { value: "" },
+    maxHistory:  { value: 50 },
+    uiTitle:     { value: "neuro-red-claw Chat" },
+  },
+  inputs:  1,
+  outputs: 3,
+  icon:    "font-awesome/fa-comments",
+  outputLabels: [
+    "→ Dashboard 2.0 (ui-template / ui-text)",
+    "→ Skill cible (demande utilisateur)",
+    "→ Historique (ui-table)",
+  ],
+  inputLabels: "Demande utilisateur + Réponse LLM",
+  label: function () {
+    return this.name || (this.uiTitle || "Chat UI");
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-chat">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Chat LLM" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-uiTitle"><i class="fa fa-comments"></i> Titre UI</label>
+    <input type="text" id="node-input-uiTitle" placeholder="neuro-red-claw Chat" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillTarget"><i class="fa fa-puzzle-piece"></i> Skill cible</label>
+    <input type="text" id="node-input-skillTarget"
+      placeholder="maison (skill qui reçoit les demandes)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-maxHistory"><i class="fa fa-history"></i> Max historique</label>
+    <input type="number" id="node-input-maxHistory" min="10" step="10" style="width:80px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">messages conservés en mémoire</span>
+  </div>
+
+  <div style="font-size:0.78em;background:#e8f8ff;padding:8px;border-radius:5px;
+              border:1px solid #89dceb;line-height:1.8;margin-top:6px;">
+    <b>Câblage Dashboard 2.0 :</b><br/>
+    <code>[ui-text-input] ──► [neuro-chat] ──1──► [ui-template: affichage chat]</code><br/>
+    <code>                              └──2──► [redclaw-skill] ──► [redclaw-orchestrator]</code><br/>
+    <code>[redclaw-orchestrator] Output2 ──► [neuro-chat]</code><br/>
+    <code>[neuro-chat] ──3──► [ui-table: historique]</code><br/><br/>
+    <b>Template ui-template (Dashboard 2.0) :</b><br/>
+    <code>&#x3C;div v-for="m in msg.payload.conversations"&#x3E;</code><br/>
+    <code>  &#x3C;div :class="m.role"&#x3E;{{m.content}}&#x3C;/div&#x3E;</code><br/>
+    <code>&#x3C;/div&#x3E;</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-chat">
+  <p><b>neuro-red-claw — Chat UI</b><br/>
+  Interface conversationnelle pour Dashboard 2.0.</p>
+  <h3>Câblage complet</h3>
+  <pre style="font-size:10px;">
+[ui-text-input] ──► [neuro-chat] ──1──► [ui-template]
+                         │         └──3──► [ui-table]
+                         └──2──► [redclaw-skill]
+                                       ↓
+                            [redclaw-orchestrator]
+                                       ↓ Output 2
+                         [neuro-chat] ◄────────────
+  </pre>
+  <h3>msg.payload vers Dashboard (Output 1)</h3>
+  <dl class="message-properties">
+    <dt>payload.conversations</dt><dd>20 derniers messages { role, content, ts, skill }</dd>
+    <dt>payload.pending</dt><dd>true si en attente de réponse LLM</dd>
+    <dt>payload.stats</dt><dd>{ total, user, assistant }</dd>
+    <dt>ui_payload</dt><dd>Contenu du dernier message (pour ui-text simple)</dd>
+  </dl>
+</script>

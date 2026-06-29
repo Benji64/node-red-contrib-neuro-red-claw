@@ -1,0 +1,95 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-approval", {
+  category: "neuro-red-claw",
+  color:    "#f9e2af",
+  defaults: {
+    name:       { value: "" },
+    timeout:    { value: 300000 },
+    maxQueue:   { value: 20 },
+    autoReject: { value: false },
+  },
+  inputs:  1,
+  outputs: 3,
+  icon:    "font-awesome/fa-check-square",
+  outputLabels: [
+    "→ Dashboard 2.0 (file d'attente)",
+    "→ Action approuvée → MCP Router",
+    "→ Action refusée / expirée → log",
+  ],
+  inputLabels: "Actions à valider + Décisions Dashboard",
+  label: function () {
+    return this.name || "Approbation";
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-approval">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Approbation Actions" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+    <input type="number" id="node-input-timeout"
+      min="30000" step="30000" style="width:120px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">
+      avant expiration automatique
+    </span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-maxQueue"><i class="fa fa-list"></i> File max</label>
+    <input type="number" id="node-input-maxQueue"
+      min="1" step="1" style="width:80px;" />
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">actions en attente max</span>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-autoReject" style="width:auto;" />
+    <label for="node-input-autoReject" style="width:auto;margin-left:5px;">
+      Refuser automatiquement à expiration
+    </label>
+  </div>
+
+  <div style="font-size:0.78em;background:#fffbe6;padding:8px;border-radius:5px;
+              border:1px solid #f9e2af;line-height:1.8;margin-top:6px;">
+    <b>Câblage Dashboard 2.0 :</b><br/>
+    <code>[security-gate] Output2 ──► [neuro-approval] ──1──► [ui-template]</code><br/>
+    <code>[redclaw-policy] Output2 ──► ↑</code><br/>
+    <code>[ui-button: Approuver] ──► [change: topic=approve] ──► [neuro-approval]</code><br/>
+    <code>[ui-button: Refuser]   ──► [change: topic=reject]  ──► [neuro-approval]</code><br/>
+    <code>[neuro-approval] ──2──► [mcp-router]</code><br/>
+    <code>[neuro-approval] ──3──► [ui-notification]</code><br/><br/>
+    <b>Format bouton Dashboard (msg.payload) :</b><br/>
+    <code>{ actionId: "abc12345" }</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-approval">
+  <p><b>neuro-red-claw — Approval UI</b><br/>
+  File d'attente des actions à valider humainement.<br/>
+  Compatible Dashboard 2.0 via ui-template et ui-button.</p>
+
+  <h3>Câblage complet</h3>
+  <pre style="font-size:10px;">
+[redclaw-orchestrator] ──► [security-gate]
+                                ├─1──► [mcp-router]    (ALLOWED)
+                                └─2──► [neuro-approval] (RESTRICTED)
+                                            │
+                        ┌───────────────────┤
+                        ↓                   │
+                [ui-template]          [ui-button: ✅]──► [neuro-approval]
+                (liste actions)        [ui-button: ✗] ──► [neuro-approval]
+                                            │
+                                  ├─2──► [mcp-router]
+                                  └─3──► [notification]
+  </pre>
+
+  <h3>Template ui-template (Vue Dashboard 2.0)</h3>
+  <pre style="font-size:10px;">
+&lt;div v-for="a in msg.payload.queue" :key="a.id"&gt;
+  &lt;b&gt;{{ a.tool }}&lt;/b&gt; — {{ a.age }}&lt;br/&gt;
+  &lt;small&gt;{{ a.reason }}&lt;/small&gt;
+  &lt;button @click="send({topic:'approve',payload:{actionId:a.id}})"&gt;✅&lt;/button&gt;
+  &lt;button @click="send({topic:'reject', payload:{actionId:a.id}})"&gt;✗&lt;/button&gt;
+&lt;/div&gt;
+  </pre>
+</script>

@@ -1,0 +1,180 @@
+<script type="text/javascript">
+(function () {
+
+  const EXAMPLES = [
+    {
+      label: "Bloquer action si agent non autorisé",
+      policy: { id:"block_unauthorized", name:"Bloquer agents non autorisés",
+        condition:"agent.role === 'guest'", level:0, priority:90,
+        scope:"all", reason:"Les agents invités ne peuvent pas agir" }
+    },
+    {
+      label: "Confirmer toute suppression",
+      policy: { id:"confirm_delete", name:"Confirmation suppression",
+        condition:"context.tool?.includes('delete') || context.tool?.includes('remove')",
+        level:1, priority:80, scope:"all", reason:"Toute suppression nécessite confirmation" }
+    },
+    {
+      label: "Superviser les actions de nuit",
+      policy: { id:"supervise_night", name:"Supervision nocturne",
+        condition:"new Date().getHours() >= 22 || new Date().getHours() < 6",
+        level:2, priority:70, scope:"all", reason:"Actions nocturnes journalisées" }
+    },
+    {
+      label: "Promouvoir actions urgentes",
+      policy: { id:"promote_urgent", name:"Priorité urgence",
+        condition:"msg.priority === 'critical' || context.emergency === true",
+        level:4, priority:95, scope:"all", reason:"Urgences traitées en priorité" }
+    },
+  ];
+
+  RED.nodes.registerType("redclaw-policy", {
+    category: "neuro-red-claw",
+    color:    "#f38ba8",
+    defaults: {
+      name:         { value: "" },
+      agentName:    { value: "" },
+      agentRole:    { value: "default" },
+      policies:     { value: "[]" },
+      logDecisions: { value: true },
+    },
+    inputs:  1,
+    outputs: 3,
+    icon:    "font-awesome/fa-balance-scale",
+    outputLabels: [
+      "✅ ALLOWED / PROMOTED → MCP Router",
+      "⚠️ RESTRICTED / SUPERVISED → confirmation",
+      "🚫 BLOCKED → refus",
+    ],
+    inputLabels: "Action depuis Orchestrateur",
+    label: function () {
+      let ps = []; try { ps = JSON.parse(this.policies||"[]"); } catch(_) {}
+      return this.name || `Policy (${ps.length} règle(s))`;
+    },
+
+    oneditprepare: function () {
+      // Validation JSON
+      const area = $("#node-input-policies");
+      try { area.val(JSON.stringify(JSON.parse(area.val()||"[]"),null,2)); } catch(_) {}
+      area.on("input", function () {
+        try { JSON.parse($(this).val()); $(this).css("border-color",""); $("#rc-pol-err").hide(); }
+        catch(e) { $(this).css("border-color","red"); $("#rc-pol-err").text(e.message).show(); }
+      });
+
+      // Boutons exemples
+      EXAMPLES.forEach((ex, i) => {
+        $(`#rc-pol-ex-${i}`).on("click", function () {
+          try {
+            const current = JSON.parse(area.val()||"[]");
+            current.push(ex.policy);
+            area.val(JSON.stringify(current,null,2));
+          } catch(_) { area.val(JSON.stringify([ex.policy],null,2)); }
+          area.trigger("input");
+        });
+      });
+
+      $("#rc-pol-clear").on("click", () => {
+        if (confirm("Effacer toutes les politiques ?")) area.val("[]");
+      });
+
+      $("#rc-pol-view").on("click", () => {
+        fetch("/redclaw/policies").then(r=>r.json()).then(d => {
+          if (!d.policies?.length) return RED.notify("Aucune politique active","info");
+          const ICONS = {0:"🚫",1:"⏳",2:"👁",3:"✅",4:"⚡"};
+          const lines = d.policies
+            .sort((a,b)=>b.priority-a.priority)
+            .map(p=>`${ICONS[p.level]||"?"} [P${p.priority}] ${p.name}\n   scope:${p.scope} — ${p.reason||""}`)
+            .join("\n\n");
+          alert(`Politiques actives (${d.policies.length}):\n\n${lines}`);
+        }).catch(e=>RED.notify(e.message,"error"));
+      });
+    },
+
+    oneditsave: function () {
+      try { JSON.parse(this.policies); } catch(_) { this.policies = "[]"; }
+    },
+  });
+})();
+</script>
+
+<script type="text/html" data-template-name="redclaw-policy">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Policy Layer" />
+  </div>
+
+  <div style="display:flex;gap:10px;">
+    <div style="flex:1;">
+      <label for="node-input-agentName" style="display:block;font-size:0.82em;color:#666;">
+        <i class="fa fa-user"></i> Agent
+      </label>
+      <input type="text" id="node-input-agentName" placeholder="maison-ceo" style="width:100%;" />
+    </div>
+    <div style="flex:1;">
+      <label for="node-input-agentRole" style="display:block;font-size:0.82em;color:#666;">
+        <i class="fa fa-id-badge"></i> Rôle
+      </label>
+      <input type="text" id="node-input-agentRole" placeholder="orchestrator" style="width:100%;" />
+    </div>
+  </div>
+  <div style="font-size:0.78em;color:#888;margin-top:3px;margin-bottom:8px;">
+    Accessibles dans les conditions via <code>agent.name</code> et <code>agent.role</code>
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-logDecisions" style="width:auto;" />
+    <label for="node-input-logDecisions" style="width:auto;margin-left:5px;">
+      Journaliser les décisions (warn Node-RED)
+    </label>
+  </div>
+
+  <hr style="border-color:#eee;"/>
+
+  <div class="form-row" style="margin-bottom:5px;">
+    <label><i class="fa fa-balance-scale"></i> Politiques</label>
+    <div style="font-size:0.78em;color:#888;margin-bottom:5px;">
+      Niveaux : <b>0</b> BLOCKED · <b>1</b> RESTRICTED · <b>2</b> SUPERVISED · <b>3</b> ALLOWED · <b>4</b> PROMOTED
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">
+      <button id="rc-pol-ex-0" class="red-ui-button" style="font-size:10px;padding:2px 5px;">🚫 Non autorisé</button>
+      <button id="rc-pol-ex-1" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⏳ Confirmer suppression</button>
+      <button id="rc-pol-ex-2" class="red-ui-button" style="font-size:10px;padding:2px 5px;">👁 Supervision nuit</button>
+      <button id="rc-pol-ex-3" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⚡ Urgences prioritaires</button>
+      <button id="rc-pol-view" class="red-ui-button" style="font-size:10px;padding:2px 5px;">📋 Voir actives</button>
+      <button id="rc-pol-clear" class="red-ui-button" style="font-size:10px;padding:2px 5px;color:red;">✕</button>
+    </div>
+    <textarea id="node-input-policies" rows="10"
+      style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
+             border:1px solid #ccc;padding:5px;resize:vertical;"
+      placeholder="[]"></textarea>
+    <div id="rc-pol-err" style="color:red;font-size:11px;display:none;"></div>
+  </div>
+
+  <div style="font-size:0.78em;background:#fff0f0;padding:7px;border-radius:4px;
+              border:1px solid #f38ba8;line-height:1.7;margin-top:4px;">
+    <b>Champs d'une politique :</b><br/>
+    <code>id</code> · <code>name</code> · <code>condition</code> (JS: msg, context, agent) ·
+    <code>level</code> (0-4) · <code>priority</code> (1-100) ·
+    <code>scope</code> ("all"|"agent:x"|"role:x"|"tool:x") · <code>reason</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-policy">
+  <p><b>RedClaw — Policy</b><br/>
+  Évalue les actions des agents contre des politiques.<br/>
+  Framework-agnostic. Position : entre Orchestrateur Output1 et MCP Router.</p>
+  <h3>Niveaux</h3>
+  <dl class="message-properties">
+    <dt>4 PROMOTED</dt><dd>Priorité maximale → Output 1</dd>
+    <dt>3 ALLOWED</dt><dd>Autorisé normalement → Output 1</dd>
+    <dt>2 SUPERVISED</dt><dd>Autorisé + alerte → Output 2</dd>
+    <dt>1 RESTRICTED</dt><dd>Confirmation humaine → Output 2</dd>
+    <dt>0 BLOCKED</dt><dd>Interdit → Output 3</dd>
+  </dl>
+  <h3>Conditions disponibles</h3>
+  <pre style="font-size:10px;">
+msg       → message complet
+context   → observations + état système
+agent     → { name, role }
+  </pre>
+</script>
