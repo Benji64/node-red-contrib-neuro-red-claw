@@ -23,7 +23,11 @@ const LlmClient          = require("../lib/llm-client");
 const ContextRenderer    = require("../lib/context-renderer");
 const instrumentation    = require("../lib/instrumentation");
 const ticketStore        = require("../lib/ticket-store");
-const goalStore          = require("../lib/goal-store");
+const NeuroMessage       = require("../lib/neuro-message");
+// v2.5 — goalStore/skillTrust/longtermMemory retirés : plus d'appel direct sans fil.
+// Leur influence ne passe désormais QUE par msg.goal_context / msg.trust_context /
+// msg.longterm_context, écrits par des nœuds explicitement câblés en amont
+// (redclaw-goal, neuro-trust, neuro-longterm, neuro-context).
 const path               = require("path");
 const os                 = require("os");
 
@@ -83,6 +87,8 @@ module.exports = function (RED) {
     node.on("input", async function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (e) { if (e) node.error(e, msg); };
+      // v2.6 — trace passive, seulement si msg.neuro déjà présent
+      if (msg.neuro) NeuroMessage.trace(msg, "orchestrator", "received");
 
       // ── Retour LLM externe ────────────────────────────────────────────────
       if (msg.redclaw_llm_id) {
@@ -171,12 +177,32 @@ module.exports = function (RED) {
 
       // v1.5 — Renderer : compression contexte dans le budget token
       // v1.7 — Enrichit avec les objectifs actifs du skill
-      const goalCtx    = goalStore.buildGoalContext(skill.name);
-      const embedCtx   = origMsg.embed_context || ""; // mémoire sémantique neuro-embed
-      const enrichedCtx = [historyCtx, goalCtx, embedCtx].filter(Boolean).join("\n\n");
+      // v2.5 — Toutes ces sources sont des lectures PASSIVES : msg.xxx_context
+      // n'existe que si un nœud a été explicitement câblé en amont pour l'écrire
+      // (redclaw-goal, neuro-trust:check, neuro-context, neuro-embed, neuro-longterm).
+      // Aucune influence ambiante sans fil visible dans le canvas.
+      const goalCtx      = origMsg.goal_context     || ""; // redclaw-goal ou neuro-context câblé
+      const embedCtx     = origMsg.embed_context    || ""; // neuro-embed câblé
+      const contextEngineCtx = origMsg.context_summary || ""; // neuro-context câblé
+      const longtermCtx  = origMsg.longterm_context || ""; // neuro-longterm câblé
+      const trustCtx      = origMsg.trust_context    || ""; // neuro-trust:check câblé
+
+      // v2.7 — objet structuré : context-renderer applique sa propre priorité
+      // de troncature (goals/constraints protégés, historique préservé en
+      // dernier recours, enrichissements optionnels sacrifiés en premier).
+      // Plus de concaténation aveugle en un seul blob avant troncature.
+      const structuredCtx = {
+        goals:       goalCtx,
+        constraints: contextEngineCtx,
+        history:     historyCtx,
+        embed:       embedCtx,
+        longterm:    longtermCtx,
+        trust:       trustCtx,
+      };
       const systemPrompt = node.renderer
-        ? node.renderer.renderSystem(skill, enrichedCtx, { debugMode: node.debugMode })
-        : _buildSystem(skill, enrichedCtx);
+        ? node.renderer.renderSystem(skill, structuredCtx, { debugMode: node.debugMode })
+        : _buildSystem(skill, [historyCtx, goalCtx, embedCtx, contextEngineCtx, longtermCtx, trustCtx]
+            .filter(Boolean).join("\n\n")); // fallback simple, sans priorité — utilisé seulement si aucun renderer configuré
       const loopHistory  = [{ role:"user", content:userMessage }];
       let steps = 0;
 
@@ -211,10 +237,22 @@ module.exports = function (RED) {
 
           node.status({ fill:"blue", shape:"dot", text:`→ ${tool} (${steps})` });
           const _toolStart = Date.now();
-          const result    = await _callTool(tool, params, skill.mcpServer, origMsg, send);
-          const _toolDur  = Date.now() - _toolStart;
-          if (trace)  instrumentation.recordTool(trace, tool, true, _toolDur);
-          if (ticket) ticketStore.addToolCall(ticket, tool, params, true, _toolDur);
+          let result;
+          try {
+            result = await _callTool(tool, params, skill.mcpServer, origMsg, send);
+            const _toolDur = Date.now() - _toolStart;
+            if (trace)  instrumentation.recordTool(trace, tool, true, _toolDur);
+            if (ticket) ticketStore.addToolCall(ticket, tool, params, true, _toolDur);
+            // v2.5 — plus d'apprentissage fantôme ici. Pour suivre la fiabilité,
+            // câbler [neuro-trust: record] sur le retour ⚡ du mcp-router,
+            // avant l'entrée de cet orchestrateur. Il lit redclaw_call_started_at
+            // (posé ci-dessous dans _callTool) pour calculer la durée lui-même.
+          } catch (e) {
+            const _toolDur = Date.now() - _toolStart;
+            if (trace)  instrumentation.recordTool(trace, tool, false, _toolDur);
+            if (ticket) ticketStore.addToolCall(ticket, tool, params, false, _toolDur);
+            throw e;
+          }
           const resultStr = typeof result === "string" ? result : JSON.stringify(result);
 
           loopHistory.push({ role:"tool_result", content:`"${tool}": ${resultStr}` });
@@ -280,6 +318,7 @@ module.exports = function (RED) {
           payload:         params || {},
           redclaw:         { ...origMsg.redclaw, tool, params:params||{}, mcpServer },
           redclaw_call_id: callId,
+          redclaw_call_started_at: Date.now(), // v2.5 — pour calcul durée par un nœud tap explicite
         }, null, null]);
       });
     }

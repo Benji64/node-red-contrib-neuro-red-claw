@@ -12,6 +12,8 @@
  * MCP Router vérifie msg.adaptateur.callId avant de continuer
  */
 
+const NeuroMessage = require("../lib/neuro-message");
+
 module.exports = function (RED) {
   function McpAdapterNode(config) {
     RED.nodes.createNode(this, config);
@@ -35,6 +37,7 @@ module.exports = function (RED) {
     node.on("input", function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (e) { if (e) node.error(e, msg); };
+      if (msg.neuro) NeuroMessage.trace(msg, `adapter:${node.toolName}`, "received");
 
       // ── CAS 1 : retour du nœud Node-RED (pas de msg.routeur) ─────────────
       if (!msg.routeur) {

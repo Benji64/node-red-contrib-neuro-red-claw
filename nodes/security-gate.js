@@ -12,6 +12,7 @@
 
 const SecurityPolicy = require("../lib/security-policy");
 const { randomUUID } = require("crypto");
+const NeuroMessage   = require("../lib/neuro-message");
 
 module.exports = function (RED) {
   function SecurityGateNode(config) {
@@ -36,6 +37,7 @@ module.exports = function (RED) {
     node.on("input", function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (e) { if (e) node.error(e, msg); };
+      if (msg.neuro) NeuroMessage.trace(msg, "security-gate", "received");
 
       // ── Réponse de confirmation humaine ───────────────────────────────────
       if (msg.redclaw_confirm) {

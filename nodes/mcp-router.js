@@ -13,6 +13,8 @@
  *   msg.redclaw_call_id = callId original
  */
 
+const NeuroMessage = require("../lib/neuro-message");
+
 module.exports = function (RED) {
   function McpRouterNode(config) {
     RED.nodes.createNode(this, config);
@@ -42,25 +44,28 @@ module.exports = function (RED) {
     node.on("input", async function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (e) { if (e) node.error(e, msg); };
+      if (msg.neuro) NeuroMessage.trace(msg, "mcp-router", "received");
 
       // ── CAS 1 : retour d'un adapter (msg.adaptateur présent) ─────────────
       if (msg.adaptateur !== undefined) {
-        const callId = msg.redclaw_call_id;
-
-        // Validation : le callId dans msg.adaptateur._callId doit correspondre
-        if (msg.adaptateur._callId && msg.adaptateur._callId !== callId) {
-          node.warn(`[MCP Router] callId invalide — attendu: ${callId}, reçu: ${msg.adaptateur._callId}`);
-          done(); return;
-        }
-
+        // v2.8 — FIX : lisait msg.redclaw_call_id en priorité alors que le
+        // protocole documenté (voir aide mcp-adapter) fait de
+        // msg.adaptateur.callId la source de vérité. Ça fonctionnait par
+        // accident tant qu'aucun nœud intermédiaire ne perdait
+        // redclaw_call_id — exactement le scénario "nœud qui ne préserve
+        // pas msg" qu'on avait anticipé sans jamais le tester. La
+        // vérification croisée sur adaptateur._callId (typo — le champ
+        // réel est adaptateur.callId, sans underscore) ne se déclenchait
+        // donc jamais et ne protégeait rien.
+        const callId = msg.adaptateur.callId || msg.redclaw_call_id;
         const p = callId && node._pending.get(callId);
 
         if (p) {
           clearTimeout(p.timer);
           node._pending.delete(callId);
-          // Nettoie _callId interne avant de transmettre le résultat
+          // Nettoie le callId interne avant de transmettre le résultat
           const result = { ...msg.adaptateur };
-          delete result._callId;
+          delete result.callId;
           p.resolve(result);
         } else {
           if (node.debugMode) node.warn(`[MCP Router] Résultat reçu mais callId inconnu ou expiré : ${callId}`);

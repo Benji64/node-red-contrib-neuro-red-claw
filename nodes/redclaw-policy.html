@@ -36,6 +36,7 @@
       agentName:    { value: "" },
       agentRole:    { value: "default" },
       policies:     { value: "[]" },
+      policyConfig: { value: "", type: "redclaw-policy-config", required: false },
       logDecisions: { value: true },
     },
     inputs:  1,
@@ -78,15 +79,28 @@
       });
 
       $("#rc-pol-view").on("click", () => {
-        fetch("/redclaw/policies").then(r=>r.json()).then(d => {
-          if (!d.policies?.length) return RED.notify("Aucune politique active","info");
+        // Prévisualise UNIQUEMENT ce que CE nœud évaluera réellement :
+        // ses politiques locales + celles de la référence explicite sélectionnée.
+        // Plus de vue globale — il n'y a plus de registre global à voir.
+        let local = [];
+        try { local = JSON.parse(area.val() || "[]"); } catch(_) {}
+
+        const refId = $("#node-input-policyConfig").val();
+        const fetchShared = refId
+          ? fetch(`/redclaw/policy-configs/${refId}`).then(r=>r.json()).catch(()=>({policies:[]}))
+          : Promise.resolve({ policies: [] });
+
+        fetchShared.then(shared => {
+          const all = [...local.map(p=>({...p,_src:"locale"})),
+                       ...(shared.policies||[]).map(p=>({...p,_src:"partagée"}))];
+          if (!all.length) return RED.notify("Aucune politique définie sur ce nœud","info");
           const ICONS = {0:"🚫",1:"⏳",2:"👁",3:"✅",4:"⚡"};
-          const lines = d.policies
-            .sort((a,b)=>b.priority-a.priority)
-            .map(p=>`${ICONS[p.level]||"?"} [P${p.priority}] ${p.name}\n   scope:${p.scope} — ${p.reason||""}`)
+          const lines = all
+            .sort((a,b)=>(b.priority??50)-(a.priority??50))
+            .map(p=>`${ICONS[p.level??3]||"?"} [P${p.priority??50}|${p._src}] ${p.name}\n   scope:${p.scope||"all"} — ${p.reason||""}`)
             .join("\n\n");
-          alert(`Politiques actives (${d.policies.length}):\n\n${lines}`);
-        }).catch(e=>RED.notify(e.message,"error"));
+          alert(`Politiques évaluées par CE nœud (${all.length}):\n\n${lines}`);
+        });
       });
     },
 
@@ -122,6 +136,16 @@
   </div>
 
   <div class="form-row">
+    <label for="node-input-policyConfig"><i class="fa fa-share-alt"></i> Règles partagées</label>
+    <input type="text" id="node-input-policyConfig" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Optionnel — référence explicite à un <code>redclaw-policy-config</code>.
+      Combinées aux politiques locales ci-dessous. Rien ne s'applique
+      sans cette sélection nommée.
+    </div>
+  </div>
+
+  <div class="form-row">
     <input type="checkbox" id="node-input-logDecisions" style="width:auto;" />
     <label for="node-input-logDecisions" style="width:auto;margin-left:5px;">
       Journaliser les décisions (warn Node-RED)
@@ -140,7 +164,7 @@
       <button id="rc-pol-ex-1" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⏳ Confirmer suppression</button>
       <button id="rc-pol-ex-2" class="red-ui-button" style="font-size:10px;padding:2px 5px;">👁 Supervision nuit</button>
       <button id="rc-pol-ex-3" class="red-ui-button" style="font-size:10px;padding:2px 5px;">⚡ Urgences prioritaires</button>
-      <button id="rc-pol-view" class="red-ui-button" style="font-size:10px;padding:2px 5px;">📋 Voir actives</button>
+      <button id="rc-pol-view" class="red-ui-button" style="font-size:10px;padding:2px 5px;">📋 Prévisualiser (locales + partagées)</button>
       <button id="rc-pol-clear" class="red-ui-button" style="font-size:10px;padding:2px 5px;color:red;">✕</button>
     </div>
     <textarea id="node-input-policies" rows="10"
@@ -160,9 +184,27 @@
 </script>
 
 <script type="text/html" data-help-name="redclaw-policy">
-  <p><b>RedClaw — Policy</b><br/>
-  Évalue les actions des agents contre des politiques.<br/>
+  <p><b>neuro-red-claw — Policy</b><br/>
+  Évalue les actions contre des politiques 100% locales à ce nœud.
   Framework-agnostic. Position : entre Orchestrateur Output1 et MCP Router.</p>
+  <h3>v2.5 — évaluation locale, plus de registre global</h3>
+  <p>Ce nœud n'évalue QUE : ses politiques inline (textarea ci-dessus)
+  + celles d'un <code>redclaw-policy-config</code> explicitement sélectionné
+  dans le champ "Règles partagées". Aucun autre nœud <code>redclaw-policy</code>
+  du canvas n'influence celui-ci, même si son <code>scope</code> semble matcher —
+  il n'y a plus de recherche par nom en arrière-plan, seulement des fils
+  physiques et des références nommées explicites.</p>
+  <div style="font-size:0.82em;background:#fff0f0;padding:8px;border-radius:4px;
+              border:1px solid #f38ba8;line-height:1.7;margin:8px 0;">
+    <b>⚠️ RESTRICTED/SUPERVISED ont besoin d'un consommateur sur Output 2.</b><br/>
+    Sans rien câblé là, l'action n'est ni autorisée ni refusée — elle part
+    et disparaît en silence (comportement standard de Node-RED pour une
+    sortie non câblée). Ce nœud détecte ce cas au démarrage et avertit
+    dans les logs + affiche <code>⚠️ Output 2 non câblé</code> dans le
+    canvas. Solution de référence :
+    <code>neuro-approval</code> (inclus dans ce package, timeout +
+    auto-reject) — ou un nœud équivalent maison.
+  </div>
   <h3>Niveaux</h3>
   <dl class="message-properties">
     <dt>4 PROMOTED</dt><dd>Priorité maximale → Output 1</dd>
@@ -177,4 +219,9 @@ msg       → message complet
 context   → observations + état système
 agent     → { name, role }
   </pre>
+  <h3>Règles partagées entre plusieurs skills</h3>
+  <p>Créer un <code>redclaw-policy-config</code> (catégorie config), y définir
+  les règles communes (ex: sécurité), puis le référencer dans chaque nœud
+  <code>redclaw-policy</code> qui doit les respecter — visible et explicite
+  dans chacun de ces panneaux, jamais implicite.</p>
 </script>
