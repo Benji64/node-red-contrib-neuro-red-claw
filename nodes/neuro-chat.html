@@ -7,16 +7,18 @@ RED.nodes.registerType("neuro-chat", {
     skillTarget: { value: "" },
     maxHistory:  { value: 50 },
     uiTitle:     { value: "neuro-red-claw Chat" },
+    assistTitle: { value: "Assistance" },
   },
   inputs:  1,
-  outputs: 3,
+  outputs: 4,
   icon:    "font-awesome/fa-comments",
   outputLabels: [
-    "→ Dashboard 2.0 (ui-template / ui-text)",
+    "→ CHAT : Dashboard 2.0 (ui-template / ui-text)",
     "→ Skill cible (demande utilisateur)",
-    "→ Historique (ui-table)",
+    "→ CHAT : historique (ui-table)",
+    "→ ASSISTANCE : Dashboard 2.0 (messages automatiques)",
   ],
-  inputLabels: "Demande utilisateur + Réponse LLM",
+  inputLabels: "Demande utilisateur + Réponse LLM + messages proactifs",
   label: function () {
     return this.name || (this.uiTitle || "Chat UI");
   },
@@ -29,8 +31,12 @@ RED.nodes.registerType("neuro-chat", {
     <input type="text" id="node-input-name" placeholder="Chat LLM" />
   </div>
   <div class="form-row">
-    <label for="node-input-uiTitle"><i class="fa fa-comments"></i> Titre UI</label>
+    <label for="node-input-uiTitle"><i class="fa fa-comments"></i> Titre CHAT</label>
     <input type="text" id="node-input-uiTitle" placeholder="neuro-red-claw Chat" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-assistTitle"><i class="fa fa-bell"></i> Titre ASSISTANCE</label>
+    <input type="text" id="node-input-assistTitle" placeholder="Assistance" />
   </div>
   <div class="form-row">
     <label for="node-input-skillTarget"><i class="fa fa-puzzle-piece"></i> Skill cible</label>
@@ -40,41 +46,82 @@ RED.nodes.registerType("neuro-chat", {
   <div class="form-row">
     <label for="node-input-maxHistory"><i class="fa fa-history"></i> Max historique</label>
     <input type="number" id="node-input-maxHistory" min="10" step="10" style="width:80px;" />
-    <span style="font-size:0.8em;color:#888;margin-left:6px;">messages conservés en mémoire</span>
+    <span style="font-size:0.8em;color:#888;margin-left:6px;">par flux (chat et assistance séparément)</span>
   </div>
 
   <div style="font-size:0.78em;background:#e8f8ff;padding:8px;border-radius:5px;
               border:1px solid #89dceb;line-height:1.8;margin-top:6px;">
-    <b>Câblage Dashboard 2.0 :</b><br/>
-    <code>[ui-text-input] ──► [neuro-chat] ──1──► [ui-template: affichage chat]</code><br/>
+    <b>Deux flux, jamais mélangés :</b><br/>
+    <b>CHAT</b> (réactif — question → réponse) :<br/>
+    <code>[ui-text-input] ──► [neuro-chat] ──1──► [ui-template chat]</code><br/>
     <code>                              └──2──► [redclaw-skill] ──► [redclaw-orchestrator]</code><br/>
     <code>[redclaw-orchestrator] Output2 ──► [neuro-chat]</code><br/>
-    <code>[neuro-chat] ──3──► [ui-table: historique]</code><br/><br/>
-    <b>Template ui-template (Dashboard 2.0) :</b><br/>
-    <code>&#x3C;div v-for="m in msg.payload.conversations"&#x3E;</code><br/>
-    <code>  &#x3C;div :class="m.role"&#x3E;{{m.content}}&#x3C;/div&#x3E;</code><br/>
-    <code>&#x3C;/div&#x3E;</code>
+    <code>[neuro-chat] ──3──► [ui-table historique]</code><br/><br/>
+    <b>ASSISTANCE</b> (proactif — poussé sans question) :<br/>
+    <code>[redclaw-goal] Output2 ──► [neuro-chat] ──4──► [ui-template assistance]</code><br/>
+    <code>[redclaw-reflect] Output1 ──► [neuro-chat] ──4──►</code><br/>
+    <code>[redclaw-observe] Output1 ──► [neuro-chat] ──4──►</code><br/>
+    Reconnus automatiquement, aucun nœud change nécessaire pour ces 3 sources.
+    Pour toute autre source : <code>msg.chat_kind = "proactive"</code>.
   </div>
 </script>
 
 <script type="text/html" data-help-name="neuro-chat">
   <p><b>neuro-red-claw — Chat UI</b><br/>
-  Interface conversationnelle pour Dashboard 2.0.</p>
+  Deux flux strictement séparés pour Dashboard 2.0 : un chat réactif
+  (Q&amp;A) et un flux d'assistance (messages poussés automatiquement).</p>
+
   <h3>Câblage complet</h3>
   <pre style="font-size:10px;">
-[ui-text-input] ──► [neuro-chat] ──1──► [ui-template]
-                         │         └──3──► [ui-table]
-                         └──2──► [redclaw-skill]
-                                       ↓
-                            [redclaw-orchestrator]
-                                       ↓ Output 2
-                         [neuro-chat] ◄────────────
+[ui-text-input] ──► [neuro-chat] ──1──► [ui-template CHAT]
+                         │         └──3──► [ui-table historique CHAT]
+                         └──2──► [redclaw-skill] ──► [redclaw-orchestrator]
+                                                            ↓ Output 2
+                              [neuro-chat] ◄────────────────┘
+
+[redclaw-goal] Output2 (atteint)  ──► [neuro-chat] ──4──► [ui-template ASSISTANCE]
+[redclaw-reflect] Output1         ──►        ↑
+[redclaw-observe] Output1         ──►        ↑
+[n'importe quelle source + msg.chat_kind="proactive"] ──►
   </pre>
-  <h3>msg.payload vers Dashboard (Output 1)</h3>
+
+  <h3>Détection CHAT vs ASSISTANCE</h3>
+  <p>Un message est classé <b>CHAT</b> (réponse à une question) si :</p>
+  <ul>
+    <li><code>msg.redclaw.finalResponse</code> ou <code>msg.redclaw.success</code> présent
+      (retour direct d'un <code>redclaw-orchestrator</code>)</li>
+    <li><code>msg.topic === "user_input"</code> ou payload brut sans <code>.redclaw</code></li>
+  </ul>
+  <p>Un message est classé <b>ASSISTANCE</b> (poussé sans question) si :</p>
+  <ul>
+    <li><code>msg.chat_kind === "proactive"</code> — marqueur explicite, toujours prioritaire</li>
+    <li>Auto-détecté : <code>msg.redclaw_goal_achieved</code>,
+      <code>msg.redclaw_reflect</code>, <code>msg.ora_perception</code>,
+      <code>msg.redclaw_hub_context</code></li>
+  </ul>
+  <p>Optionnel sur les messages ASSISTANCE :
+  <code>msg.chat_source</code> (étiquette de provenance) et
+  <code>msg.chat_category</code> = <code>"info"|"success"|"warning"|"alert"</code>
+  (pour le style visuel côté Dashboard).</p>
+
+  <h3>Output 1 — CHAT (msg.payload)</h3>
   <dl class="message-properties">
     <dt>payload.conversations</dt><dd>20 derniers messages { role, content, ts, skill }</dd>
     <dt>payload.pending</dt><dd>true si en attente de réponse LLM</dd>
     <dt>payload.stats</dt><dd>{ total, user, assistant }</dd>
-    <dt>ui_payload</dt><dd>Contenu du dernier message (pour ui-text simple)</dd>
+    <dt>ui_payload / ui_role / ui_ts</dt><dd>Dernier message (pour ui-text simple)</dd>
   </dl>
+
+  <h3>Output 4 — ASSISTANCE (msg.payload)</h3>
+  <dl class="message-properties">
+    <dt>payload.items</dt><dd>20 derniers { content, ts, source, category }</dd>
+    <dt>payload.stats</dt><dd>{ total }</dd>
+    <dt>ui_payload / ui_source / ui_category / ui_ts</dt><dd>Dernier item</dd>
+  </dl>
+
+  <h3>Persistance</h3>
+  <p>Les deux historiques vivent en mémoire du nœud — perdus au
+  redémarrage/redéploiement de Node-RED. Pas de persistance disque
+  native (contrairement à <code>conversation-memory.js</code> de
+  l'orchestrateur).</p>
 </script>

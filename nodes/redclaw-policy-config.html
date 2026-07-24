@@ -1,0 +1,50 @@
+<script type="text/javascript">
+RED.nodes.registerType("redclaw-policy-config", {
+  category: "config",
+  defaults: {
+    name:     { value: "" },
+    policies: { value: "[]" },
+  },
+  label: function () {
+    let ps = []; try { ps = JSON.parse(this.policies||"[]"); } catch(_) {}
+    return this.name || `${ps.length} politique(s) partagée(s)`;
+  },
+  oneditprepare: function () {
+    const area = $("#node-config-input-policies");
+    try { area.val(JSON.stringify(JSON.parse(area.val()||"[]"),null,2)); } catch(_) {}
+  },
+  oneditsave: function () {
+    try { JSON.parse(this.policies); } catch(_) { this.policies = "[]"; }
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="redclaw-policy-config">
+  <div class="form-row">
+    <label for="node-config-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-config-input-name" placeholder="Règles de sécurité maison" />
+  </div>
+  <div class="form-row">
+    <label for="node-config-input-policies"><i class="fa fa-balance-scale"></i> Politiques</label>
+    <textarea id="node-config-input-policies" rows="12"
+      style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
+             border:1px solid #ccc;padding:5px;resize:vertical;"
+      placeholder="[]"></textarea>
+  </div>
+  <div style="font-size:0.78em;background:#fff0f0;padding:7px;border-radius:4px;
+              border:1px solid #f38ba8;line-height:1.7;margin-top:4px;">
+    <b>Ressource partagée explicite — pas un registre ambiant.</b><br/>
+    Ce jeu de règles ne s'applique QUE dans les nœuds <code>redclaw-policy</code>
+    qui le sélectionnent explicitement dans leur configuration.<br/>
+    Aucun effet automatique par coïncidence de nom ou de scope.
+  </div>
+</script>
+
+<script type="text/html" data-help-name="redclaw-policy-config">
+  <p><b>neuro-red-claw — Policy Config</b><br/>
+  Jeu de politiques partageable entre plusieurs nœuds <code>redclaw-policy</code>,
+  exactement comme <code>llm-config</code> est partagé entre orchestrateurs.</p>
+  <p>Le partage est toujours <b>explicite</b> : chaque nœud <code>redclaw-policy</code>
+  qui veut utiliser ces règles doit le sélectionner nommément dans son propre
+  panneau de configuration.</p>
+</script>

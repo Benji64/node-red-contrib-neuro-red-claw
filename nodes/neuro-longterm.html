@@ -1,0 +1,101 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-longterm", {
+  category: "neuro-red-claw",
+  color:    "#cba6f7",
+  defaults: {
+    name:      { value: "" },
+    mode:      { value: "query" },
+    skillName: { value: "" },
+    memType:   { value: "pattern" },
+    limit:     { value: 5 },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-history",
+  outputLabels: ["→ Contexte / Souvenirs enregistrés", "→ Erreur"],
+  inputLabels: "Contenu à mémoriser ou requête",
+  label: function () { return this.name || `Longterm (${this.mode})`; },
+
+  oneditprepare: function () {
+    function toggle() {
+      $(".rc-lt-record").toggle($("#node-input-mode").val() === "record");
+    }
+    $("#node-input-mode").on("change", toggle);
+    toggle();
+
+    $("#rc-lt-view").on("click", function () {
+      const skill = $("#node-input-skillName").val() || "";
+      fetch(`/redclaw/longterm${skill?"?skill="+skill:""}`).then(r=>r.json()).then(d => {
+        if (!d.memories?.length) return RED.notify("Aucun souvenir long terme","info");
+        const ICONS = { habit:"🔁", pattern:"📊", fact:"📌" };
+        const lines = d.memories
+          .sort((a,b)=>b.confidence-a.confidence)
+          .map(m => `${ICONS[m.type]||"•"} ${m.content}\n   ${Math.round(m.confidence*100)}% — vu ${m.occurrences}×`)
+          .join("\n\n");
+        alert(`Mémoire long terme (${d.memories.length}) :\n\n${lines}`);
+      }).catch(e=>RED.notify(e.message,"error"));
+    });
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-longterm">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Mémoire Habitudes" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-mode"><i class="fa fa-history"></i> Mode</label>
+    <select id="node-input-mode" style="width:75%;">
+      <option value="query">🔍 Query — récupère le contexte long terme</option>
+      <option value="record">📝 Record — enregistre/renforce un souvenir</option>
+      <option value="auto">⚡ Auto — lit msg.longterm_action</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillName"><i class="fa fa-puzzle-piece"></i> Skill</label>
+    <input type="text" id="node-input-skillName"
+      placeholder="(vide = msg.sessionId)" />
+  </div>
+
+  <div class="rc-lt-record form-row">
+    <label for="node-input-memType"><i class="fa fa-tag"></i> Type</label>
+    <select id="node-input-memType" style="width:75%;">
+      <option value="habit">🔁 Habit — comportement récurrent</option>
+      <option value="pattern">📊 Pattern — tendance détectée</option>
+      <option value="fact">📌 Fact — fait établi</option>
+    </select>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-limit"><i class="fa fa-list-ol"></i> Limite (query)</label>
+    <input type="number" id="node-input-limit" min="1" max="20" style="width:80px;" />
+  </div>
+
+  <div class="form-row" style="margin-top:6px;">
+    <button id="rc-lt-view" class="red-ui-button" style="width:auto;">
+      <i class="fa fa-eye"></i> Voir les souvenirs
+    </button>
+  </div>
+
+  <div style="font-size:0.78em;background:#f0e8ff;padding:8px;border-radius:5px;
+              border:1px solid #cba6f7;line-height:1.8;margin-top:6px;">
+    <b>Boucle d'apprentissage :</b><br/>
+    <code>[redclaw-reflect] Output2 ──► [neuro-longterm: record]</code><br/>
+    <code>[neuro-longterm: query] ──► [redclaw-orchestrator]</code><br/>
+    <code>msg.longterm_context</code> est lu automatiquement par l'orchestrateur.<br/><br/>
+    Un souvenir répété renforce sa confiance (converge vers 99%).
+    Non revu depuis 90j → confiance décroît jusqu'à 30%.
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-longterm">
+  <p><b>neuro-red-claw — Long-term Memory</b><br/>
+  Habitudes et patterns qui survivent au-delà du sliding window.</p>
+  <h3>Différence avec neuro-embed</h3>
+  <p><code>neuro-embed</code> : recherche sémantique sur le contenu brut des conversations.<br/>
+  <code>neuro-longterm</code> : faits DISTILLÉS, renforcés par répétition, avec décroissance temporelle.</p>
+  <h3>msg.longterm_context</h3>
+  <p>Lu automatiquement par <code>redclaw-orchestrator</code> s'il est présent
+  dans le msg entrant — ajouté au system prompt comme goals/embed_context.</p>
+</script>

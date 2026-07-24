@@ -69,11 +69,15 @@ module.exports = function (RED) {
           case "get":
             send([{ ...msg, payload: g?.current, redclaw_goal: g }, null]);
             break;
-          case "pause":
-            g.status = "paused"; goalStore._persist();
+          case "pause": {
+            // v2.8 — FIX : passe par upsert() plutôt que de muter g en
+            // place + appeler _persist() (méthode privée du store). Même
+            // discipline que reset() juste en-dessous.
+            const paused = goalStore.upsert({ ...g, status: "paused" });
             node.status({ fill:"grey", shape:"ring", text:"Pause" });
-            send([{ ...msg, payload: g?.current, redclaw_goal: g }, null]);
+            send([{ ...msg, payload: paused?.current, redclaw_goal: paused }, null]);
             break;
+          }
           case "reset":
             const reset = goalStore.upsert({ ...g, current: null, status:"active", progress:0 });
             _display(reset);
@@ -98,11 +102,14 @@ module.exports = function (RED) {
       _display(updated);
 
       // Output 1 : transmet le msg enrichi avec l'état de l'objectif
-      // L'orchestrateur ou le skill connecté voit msg.redclaw_goal
+      // msg.goal_context n'existe QUE si ce nœud est câblé sur le chemin —
+      // c'est le fil qui autorise l'influence, pas une recherche par nom en arrière-plan
+      const goal_context = goalStore.buildGoalContext(node.skillName);
       send([{
         ...msg,
         payload:      value,          // valeur originale préservée
-        redclaw_goal: updated,        // contexte objectif pour l'orchestrateur
+        redclaw_goal: updated,        // état structuré de cet objectif
+        goal_context,                 // résumé texte — lu passivement par l'orchestrateur si câblé
       }, null]);
 
       // Output 2 : événement unique "atteint" (passage actif → achieved)

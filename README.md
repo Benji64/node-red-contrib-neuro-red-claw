@@ -34,7 +34,7 @@ npm install node-red-contrib-neuro-red-claw
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull gemma3:4b            # agent général
-ollama pull qwen2.5-coder:7b     # coding agent
+ollama pull qwen2.5-coder:7b     # utile SI node-red-contrib-neuro-red-claw-coding est installé
 ollama pull mxbai-embed-large    # embeddings sémantiques
 ```
 
@@ -91,21 +91,32 @@ COUCHE 0  Fondation           skill · orchestrateur · mcp-router · mcp-adapte
 
 | Nœud | Rôle |
 |------|------|
-| `neuro-chat` | Interface chat LLM — compatible Dashboard 2.0 |
-| `neuro-approval` | File d'approbation des actions humaines |
+| `neuro-chat` | Chat LLM (réactif) + Assistance (proactif) — deux flux séparés, compatible Dashboard 2.0 |
+| `neuro-approval` | File d'approbation des actions humaines — timeout + auto-reject, consommateur de référence d'Output 2 sur `redclaw-policy` |
 
-### Coding Agent
+### Domain packages séparés
 
-| Nœud | Rôle |
-|------|------|
-| `rc-coding-skill` | Skill coding avec contexte projet |
-| `rc-tool-bash` | Exécute des commandes shell |
-| `rc-tool-read-file` | Lit un fichier (plage de lignes) |
-| `rc-tool-write-file` | Crée ou remplace un fichier |
-| `rc-tool-edit-file` | Remplacement ciblé (str_replace) |
-| `rc-tool-search` | grep / find |
-| `rc-tool-git` | Opérations git |
-| `rc-tool-list-dir` | Liste un dossier |
+`neuro-red-claw` est le framework — le système nerveux générique. Une
+application vraiment distincte (coder, gérer une maison, un hôpital…)
+est un **domain package** séparé, qui se compose avec ces 21 nœuds sans
+jamais faire partie du core.
+
+- **v2.7** — le coding agent (bash, git, fichiers) extrait : sa surface
+  de sécurité (exécution shell) ne devrait pas être imposée à qui
+  installe le framework pour un tout autre domaine.
+- **v2.11 → v2.12** — le chat/l'approbation Dashboard 2.0 avaient été
+  extraits par le même principe (zéro dépendance de code), puis
+  **réintégrés** : contrairement au coding agent, ils ne portent aucun
+  risque de sécurité propre, et la séparation créait un vrai piège —
+  `neuro-approval` est le consommateur de référence d'Output 2 sur
+  `redclaw-policy` (RESTRICTED/SUPERVISED), l'oublier dans un package à
+  côté rendait facile de configurer des guardrails qui ne font rien.
+  `redclaw-policy` détecte toujours ce cas au démarrage (oubli de
+  câblage, pas d'installation) et avertit dans le canvas.
+
+| Package | Fournit |
+|---------|---------|
+| [`node-red-contrib-neuro-red-claw-coding`](https://www.npmjs.com/package/node-red-contrib-neuro-red-claw-coding) | `rc-coding-skill`, `rc-tool-bash`, `rc-tool-read-file`, `rc-tool-write-file`, `rc-tool-edit-file`, `rc-tool-search`, `rc-tool-git`, `rc-tool-list-dir` |
 
 ---
 
@@ -271,15 +282,16 @@ return msg.payload?.data?.dps?.["1"] !== undefined;
 
 ## Dashboard 2.0
 
-### Chat LLM
+### Chat LLM — flux réactif (question → réponse)
 
 ```
-[ui-text-input] ──► [neuro-chat] ──1──► [ui-template]
+[ui-text-input] ──► [neuro-chat] ──1──► [ui-template CHAT]
+                         │         └──3──► [ui-table historique CHAT]
                          └──2──► [redclaw-skill] ──► [redclaw-orchestrator] Output2 ──► [neuro-chat]
 ```
 
 ```html
-<!-- Template ui-template Dashboard 2.0 -->
+<!-- Template ui-template Dashboard 2.0 — Chat -->
 <div v-for="m in msg.payload.conversations" :key="m.ts">
   <div :class="'msg-' + m.role">
     <b>{{ m.role === 'user' ? '👤' : '🤖' }}</b> {{ m.content }}
@@ -287,10 +299,36 @@ return msg.payload?.data?.dps?.["1"] !== undefined;
 </div>
 ```
 
-### File d'approbation
+### Assistance — flux proactif (poussé sans question)
+
+Strictement séparé du chat — un message assistance n'apparaît jamais
+dans l'historique de conversation, et inversement.
 
 ```
-[security-gate] Output2 ──► [neuro-approval] ──1──► [ui-template]
+[redclaw-goal] Output2 (atteint)  ──► [neuro-chat] ──4──► [ui-template ASSISTANCE]
+[redclaw-reflect] Output1         ──►        ↑
+[redclaw-observe] Output1         ──►        ↑
+```
+
+Ces 3 sources cœur sont reconnues automatiquement, sans nœud `change`.
+Pour toute autre source :
+```js
+msg.chat_kind     = "proactive";   // requis
+msg.chat_source   = "ma-source";   // optionnel
+msg.chat_category = "warning";     // optionnel : info|success|warning|alert
+```
+
+```html
+<!-- Template ui-template Dashboard 2.0 — Assistance -->
+<div v-for="a in msg.payload.items" :key="a.ts" :class="'assist-' + a.category">
+  <b>{{ a.source }}</b> — {{ a.content }}
+</div>
+```
+
+### File d'approbation — consommateur de référence de redclaw-policy Output 2
+
+```
+[redclaw-policy] Output2 (RESTRICTED/SUPERVISED) ──► [neuro-approval] ──1──► [ui-template]
 [ui-button ✅] ──► [change: topic=approve, payload={actionId}] ──► [neuro-approval] ──2──► [mcp-router]
 [ui-button ✗]  ──► [change: topic=reject,  payload={actionId}] ──► [neuro-approval] ──3──► [log]
 ```

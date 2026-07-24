@@ -1,0 +1,119 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-context", {
+  category: "neuro-red-claw",
+  color:    "#89b4fa",
+  defaults: {
+    name:               { value: "" },
+    includeState:       { value: true },
+    includeTickets:     { value: true },
+    includeGoals:       { value: true },
+    includeConstraints: { value: true },
+    policyConfig:        { value: "", type: "redclaw-policy-config", required: false },
+    ticketLimit:        { value: 5 },
+    skillFilter:        { value: "" },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-cubes",
+  outputLabels: ["→ Contexte assemblé → Skill", "→ Erreur"],
+  inputLabels: "Depuis Hub ou Skill",
+  label: function () { return this.name || "Context Engine"; },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-context">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Context Engine" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-skillFilter"><i class="fa fa-puzzle-piece"></i> Skill ciblé</label>
+    <input type="text" id="node-input-skillFilter"
+      placeholder="(vide = auto-détecté depuis msg)" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-ticketLimit"><i class="fa fa-ticket"></i> Limite tickets</label>
+    <input type="number" id="node-input-ticketLimit" min="1" max="20" style="width:80px;" />
+  </div>
+
+  <hr style="border-color:#eee;"/>
+  <div style="font-size:0.82em;color:#666;margin-bottom:6px;font-weight:600;">
+    Composantes du contexte
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeState" style="width:auto;" />
+    <label for="node-input-includeState" style="width:auto;margin-left:5px;">
+      🟢 State — observations courantes (capteurs)
+    </label>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeTickets" style="width:auto;" />
+    <label for="node-input-includeTickets" style="width:auto;margin-left:5px;">
+      🟡 Tickets actifs liés au skill
+    </label>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeGoals" style="width:auto;" />
+    <label for="node-input-includeGoals" style="width:auto;margin-left:5px;">
+      🎯 Goals actifs du skill
+    </label>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-includeConstraints" style="width:auto;" />
+    <label for="node-input-includeConstraints" style="width:auto;margin-left:5px;">
+      ⚖️ Contraintes — depuis la référence ci-dessous uniquement
+    </label>
+  </div>
+  <div class="form-row">
+    <label for="node-input-policyConfig"><i class="fa fa-share-alt"></i> Règles partagées</label>
+    <input type="text" id="node-input-policyConfig" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Optionnel — référence explicite à un <code>redclaw-policy-config</code>.
+      Sans sélection, <code>context.constraints</code> reste vide (pas de
+      recherche automatique par nom de skill).
+    </div>
+  </div>
+
+  <div style="font-size:0.78em;background:#dce8ff;padding:8px;border-radius:5px;
+              border:1px solid #89b4fa;line-height:1.8;margin-top:6px;">
+    <b>Position dans le flow :</b><br/>
+    <code>[redclaw-hub] ──► [neuro-context] ──► [redclaw-skill] ──► [Orchestrateur]</code><br/><br/>
+    <b>Responsabilité séparée :</b><br/>
+    Le Hub route. Le Context Engine assemble. Le Skill exécute.<br/><br/>
+    <b>msg produit :</b><br/>
+    <code>msg.neuro.context = { state, tickets, goals, constraints }</code><br/>
+    <code>msg.context_summary</code> = résumé texte prêt pour le LLM
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-context">
+  <p><b>neuro-red-claw — Context Engine</b><br/>
+  Assemble une vue complète avant l'appel skill.
+  Le Hub reste simple (routage), le Context Engine fait l'assemblage.</p>
+
+  <h3>Architecture</h3>
+  <pre style="font-size:10px;">
+Node-RED (exécution)
+   ↓
+Hub (routing uniquement)
+   ↓
+Context Engine (vue globale) ← VOUS ÊTES ICI
+   ↓
+Skills (logique spécialisée)
+   ↓
+Tickets (mémoire active)
+   ↓
+Policy Engine (arbitrage)
+   ↓
+Goals (direction)
+  </pre>
+
+  <h3>msg.neuro.context produit</h3>
+  <dl class="message-properties">
+    <dt>state</dt><dd>{ source_key: value } — observations courantes</dd>
+    <dt>tickets</dt><dd>[{ id, user_message, steps }] — tickets actifs</dd>
+    <dt>goals</dt><dd>[{ name, priority, progress, direction }]</dd>
+    <dt>constraints</dt><dd>{ policyContext } — règles actives</dd>
+  </dl>
+</script>

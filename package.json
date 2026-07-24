@@ -1,7 +1,7 @@
 {
   "name": "node-red-contrib-neuro-red-claw",
-  "version": "2.2.0",
-  "description": "neuro-red-claw — Système nerveux général d'agents IA pour Node-RED. Framework cognitif multi-agents : skills, orchestration, mémoire, objectifs, observation, politiques, réflexion, pensée divergente.",
+  "version": "2.13.0",
+  "description": "neuro-red-claw \u2014 Syst\u00e8me nerveux g\u00e9n\u00e9ral d'agents IA pour Node-RED. Framework cognitif multi-agents : skills, orchestration, m\u00e9moire, objectifs, observation, politiques, r\u00e9flexion. Le coding agent est un domain package s\u00e9par\u00e9 : node-red-contrib-neuro-red-claw-coding.",
   "keywords": [
     "node-red",
     "neuro-red-claw",
@@ -27,14 +27,6 @@
       "mcp-router": "nodes/mcp-router.js",
       "mcp-adapter": "nodes/mcp-adapter.js",
       "security-gate": "nodes/security-gate.js",
-      "rc-coding-skill": "nodes/rc-coding-skill.js",
-      "rc-tool-bash": "nodes/rc-tool-bash.js",
-      "rc-tool-read-file": "nodes/rc-tool-read-file.js",
-      "rc-tool-write-file": "nodes/rc-tool-write-file.js",
-      "rc-tool-edit-file": "nodes/rc-tool-edit-file.js",
-      "rc-tool-search": "nodes/rc-tool-search.js",
-      "rc-tool-git": "nodes/rc-tool-git.js",
-      "rc-tool-list-dir": "nodes/rc-tool-list-dir.js",
       "redclaw-hub": "nodes/redclaw-hub.js",
       "redclaw-goal": "nodes/redclaw-goal.js",
       "redclaw-observe": "nodes/redclaw-observe.js",
@@ -42,10 +34,15 @@
       "redclaw-reflect": "nodes/redclaw-reflect.js",
       "redclaw-diverge": "nodes/redclaw-diverge.js",
       "redclaw-orchestrator": "nodes/agent-orchestrator.js",
-      "neuro-chat": "nodes/neuro-chat.js",
-      "neuro-approval": "nodes/neuro-approval.js",
       "embed-config": "nodes/embed-config.js",
-      "neuro-embed": "nodes/neuro-embed.js"
+      "neuro-embed": "nodes/neuro-embed.js",
+      "neuro-envelope": "nodes/neuro-envelope.js",
+      "neuro-context": "nodes/neuro-context.js",
+      "neuro-trust": "nodes/neuro-trust.js",
+      "neuro-longterm": "nodes/neuro-longterm.js",
+      "redclaw-policy-config": "nodes/redclaw-policy-config.js",
+      "neuro-chat": "nodes/neuro-chat.js",
+      "neuro-approval": "nodes/neuro-approval.js"
     }
   },
   "dependencies": {
@@ -53,5 +50,12 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "node-red": "^5.0.1",
+    "node-red-node-test-helper": "^0.3.6"
+  },
+  "scripts": {
+    "test": "node --test test/"
   }
 }

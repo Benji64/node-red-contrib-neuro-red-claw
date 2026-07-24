@@ -1,4 +1,5 @@
 const skillRegistry = require("../lib/skill-registry");
+const NeuroMessage  = require("../lib/neuro-message");
 /**
  * RedClaw — Skill Node
  *
@@ -56,6 +57,10 @@ module.exports = function (RED) {
     node.on("input", function (msg, send, done) {
       send = send || function () { node.send.apply(node, arguments); };
       done = done || function (e) { if (e) node.error(e, msg); };
+      // v2.6 — contribue une entrée de trace UNIQUEMENT si msg.neuro existe déjà
+      // (l'utilisateur a choisi le standard via neuro-envelope:wrap en amont).
+      // Ne lit aucun état global, ne force jamais l'enveloppe : passif et sûr.
+      if (msg.neuro) NeuroMessage.trace(msg, `skill:${node.skillName}`, "received");
 
       const userMessage = typeof msg.payload === "string"
         ? msg.payload.trim()

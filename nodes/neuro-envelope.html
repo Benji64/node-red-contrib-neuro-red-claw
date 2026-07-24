@@ -1,0 +1,126 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-envelope", {
+  category: "neuro-red-claw",
+  color:    "#94e2d5",
+  defaults: {
+    name:     { value: "" },
+    mode:     { value: "wrap" },
+    nodeName: { value: "" },
+    msgType:  { value: "event" },
+    source:   { value: "" },
+    intent:   { value: "" },
+    priority: { value: 50 },
+    strict:   { value: false },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-cube",
+  outputLabels: function () {
+    return this.mode === "validate"
+      ? ["✅ Valide", "❌ Invalide"]
+      : ["→ Message standardisé", "(inutilisé)"];
+  },
+  inputLabels: "Message à standardiser",
+  label: function () {
+    return this.name || `Envelope (${this.mode})`;
+  },
+
+  oneditprepare: function () {
+    function toggle() {
+      const m = $("#node-input-mode").val();
+      $(".rc-env-wrap").toggle(m === "wrap");
+    }
+    $("#node-input-mode").on("change", toggle);
+    toggle();
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-envelope">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Envelope" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-mode"><i class="fa fa-cube"></i> Mode</label>
+    <select id="node-input-mode" style="width:75%;">
+      <option value="wrap">📦 Wrap — standardise le message entrant</option>
+      <option value="unwrap">📭 Unwrap — extrait les données vers payload</option>
+      <option value="trace">🔗 Trace — ajoute une étape au chemin</option>
+      <option value="validate">✓ Validate — vérifie le format</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-nodeName"><i class="fa fa-map-marker"></i> Nom dans la trace</label>
+    <input type="text" id="node-input-nodeName" placeholder="skill.energie" />
+  </div>
+
+  <div class="rc-env-wrap">
+    <div class="form-row">
+      <label for="node-input-msgType"><i class="fa fa-flag"></i> Type</label>
+      <select id="node-input-msgType" style="width:75%;">
+        <option value="event">event</option>
+        <option value="skill_request">skill_request</option>
+        <option value="skill_response">skill_response</option>
+        <option value="ticket">ticket</option>
+        <option value="observation">observation</option>
+        <option value="tool_call">tool_call</option>
+        <option value="delegation">delegation</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label for="node-input-source"><i class="fa fa-sign-in"></i> Source</label>
+      <input type="text" id="node-input-source"
+        placeholder="skill:energie (vide = auto)" style="font-family:monospace;" />
+    </div>
+    <div class="form-row">
+      <label for="node-input-intent"><i class="fa fa-bullseye"></i> Intent</label>
+      <input type="text" id="node-input-intent" placeholder="check_temperature" />
+    </div>
+    <div class="form-row">
+      <label for="node-input-priority"><i class="fa fa-exclamation"></i> Priorité</label>
+      <input type="number" id="node-input-priority" min="0" max="100" style="width:80px;" />
+    </div>
+  </div>
+
+  <div class="form-row">
+    <input type="checkbox" id="node-input-strict" style="width:auto;" />
+    <label for="node-input-strict" style="width:auto;margin-left:5px;">
+      Logger la trace complète (debug)
+    </label>
+  </div>
+
+  <div style="font-size:0.78em;background:#e0f5ed;padding:8px;border-radius:5px;
+              border:1px solid #94e2d5;line-height:1.8;margin-top:6px;">
+    <b>Format standard msg.neuro :</b><br/>
+    <code>{ id, type, source, intent, context:{state,memory,tickets,goals}, data, priority, trace }</code><br/><br/>
+    <b>Câblage :</b><br/>
+    <code>[Source] ──► [Envelope: wrap] ──► [redclaw-skill] ──► [Orch]</code><br/>
+    <code>[Orch] ──► [Envelope: unwrap] ──► [Dashboard]</code>
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-envelope">
+  <p><b>neuro-red-claw — Envelope</b><br/>
+  Standardise tous les messages dans un format unique.<br/>
+  Résout l'incompatibilité entre skills/nœuds — LE point critique des systèmes multi-agents.</p>
+
+  <h3>Format msg.neuro</h3>
+  <dl class="message-properties">
+    <dt>id</dt><dd>UUID unique du message</dd>
+    <dt>type</dt><dd>event · skill_request · skill_response · ticket · observation · tool_call · delegation</dd>
+    <dt>source</dt><dd>Origine du message (node:id, skill:nom, hub...)</dd>
+    <dt>intent</dt><dd>Intention métier optionnelle</dd>
+    <dt>context</dt><dd>{ state, memory, tickets, goals } — vue assemblée</dd>
+    <dt>data</dt><dd>Données métier brutes</dd>
+    <dt>priority</dt><dd>0-100, urgence du message</dd>
+    <dt>trace</dt><dd>[{ node, ts, action }] — chemin parcouru</dd>
+  </dl>
+
+  <h3>Debug avec la trace</h3>
+  <p>Chaque passage par un nœud Envelope (mode trace/wrap/unwrap)
+  ajoute une entrée. En fin de parcours :</p>
+  <pre style="font-size:10px;">
+hub → skill.energie → orchestrator → mcp.router → tuya.adapter
+  </pre>
+</script>

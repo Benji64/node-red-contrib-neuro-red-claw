@@ -1,0 +1,128 @@
+<script type="text/javascript">
+RED.nodes.registerType("neuro-trust", {
+  category: "neuro-red-claw",
+  color:    "#f9e2af",
+  defaults: {
+    name:           { value: "" },
+    mode:           { value: "check" },
+    threshold:      { value: 0.7 },
+    alertOnFailure: { value: true },
+  },
+  inputs:  1,
+  outputs: 2,
+  icon:    "font-awesome/fa-shield",
+  outputLabels: function () {
+    if (this.mode === "record") return ["→ msg relayé (passthrough)", "⚠️ Alerte confiance dégradée"];
+    if (this.mode === "check")  return ["✅ Confiance OK", "⚠️ Sous le seuil"];
+    return ["→ Résultat", "(inutilisé)"];
+  },
+  inputLabels: "Tool call (aller) ou retour (selon mode)",
+  label: function () { return this.name || `Trust (${this.mode})`; },
+
+  oneditprepare: function () {
+    function toggle() {
+      $(".rc-trust-record").toggle($("#node-input-mode").val() === "record");
+      $(".rc-trust-check").toggle($("#node-input-mode").val() === "check");
+    }
+    $("#node-input-mode").on("change", toggle);
+    toggle();
+
+    $("#rc-trust-view").on("click", function () {
+      fetch("/redclaw/trust").then(r=>r.json()).then(d => {
+        if (!d.trust?.length) return RED.notify("Aucune donnée de confiance encore — câbler le mode record d'abord", "info");
+        const lines = d.trust
+          .sort((a,b)=>a.trustScore-b.trustScore)
+          .map(t => `${t.trustScore<0.7?"⚠️":"✅"} ${t.skill}.${t.tool} : ${Math.round(t.trustScore*100)}% (${t.totalCalls} appels)${t.lastFailureReason?" — dernier échec: "+t.lastFailureReason:""}`)
+          .join("\n");
+        alert(`Confiance des tools (${d.trust.length}) :\n\n${lines}`);
+      }).catch(e=>RED.notify(e.message,"error"));
+    });
+  },
+});
+</script>
+
+<script type="text/html" data-template-name="neuro-trust">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
+    <input type="text" id="node-input-name" placeholder="Trust" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-mode"><i class="fa fa-shield"></i> Mode</label>
+    <select id="node-input-mode" style="width:75%;">
+      <option value="record">📡 Record — tap sur le retour, apprend</option>
+      <option value="check">🛡 Check — vérifie avant action</option>
+      <option value="view">👁 View — retourne les scores</option>
+      <option value="reset">🔄 Reset — réinitialise un tool</option>
+    </select>
+  </div>
+
+  <div class="rc-trust-record" style="font-size:0.78em;background:#fff3e0;padding:8px;
+       border-radius:4px;border:1px solid #ff6b35;line-height:1.7;margin-bottom:8px;">
+    <b>Câblage obligatoire — TAP sur le retour :</b><br/>
+    <code>[mcp-router] ⚡ ──► [neuro-trust: record] ──► [redclaw-orchestrator] entrée</code><br/>
+    Ce nœud relaie TOUJOURS le message inchangé sur Output 1 — c'est un tap, pas un filtre.
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-threshold"><i class="fa fa-sliders"></i> Seuil alerte</label>
+    <input type="number" id="node-input-threshold" min="0" max="1" step="0.05" style="width:80px;" />
+  </div>
+
+  <div class="rc-trust-record form-row">
+    <input type="checkbox" id="node-input-alertOnFailure" style="width:auto;" />
+    <label for="node-input-alertOnFailure" style="width:auto;margin-left:5px;">
+      Émettre une alerte (Output 2) si échec + confiance sous le seuil
+    </label>
+  </div>
+
+  <div class="rc-trust-check" style="font-size:0.78em;background:#e8f8ff;padding:8px;
+       border-radius:4px;border:1px solid #89dceb;line-height:1.7;margin-bottom:8px;">
+    <b>Câblage — AVANT l'action :</b><br/>
+    <code>[redclaw-orchestrator] Output1 ──► [neuro-trust: check] ──► [redclaw-policy]</code><br/>
+    Écrit <code>msg.trust_context</code> — lu passivement par un orchestrateur câblé en amont.
+  </div>
+
+  <div class="form-row" style="margin-top:6px;">
+    <button id="rc-trust-view" class="red-ui-button" style="width:auto;">
+      <i class="fa fa-bar-chart"></i> Voir toutes les confiances
+    </button>
+  </div>
+
+  <div style="font-size:0.78em;background:#f5f5f5;padding:7px;border-radius:4px;
+              border:1px solid #ccc;line-height:1.7;margin-top:6px;">
+    <b>Philosophie v2.5 :</b> aucune influence sans fil visible.
+    Comme un arc réflexe biologique — court, mais toujours une vraie synapse,
+    jamais une connaissance ambiante invoquée par nom en arrière-plan.
+  </div>
+</script>
+
+<script type="text/html" data-help-name="neuro-trust">
+  <p><b>neuro-red-claw — Trust</b><br/>
+  Mémoire de fiabilité — 100% câblage explicite, aucun apprentissage fantôme.</p>
+
+  <h3>Les deux nœuds nécessaires</h3>
+  <pre style="font-size:10px;">
+[redclaw-orchestrator] Output1 (stamp redclaw_call_started_at)
+       │
+[security-gate] → [redclaw-policy] → [mcp-router] → [adapter] → [tool]
+       │                                    │
+       │                          [adapter] → [mcp-router] ⚡
+       │                                            │
+       │                          [neuro-trust: record]  ← apprend ici
+       │                                            │
+       └──────────────────────────► [redclaw-orchestrator] entrée
+  </pre>
+
+  <h3>Pourquoi un tap et pas un câble automatique ?</h3>
+  <p>Même le réflexe le plus rapide d'un système nerveux biologique passe par
+  une synapse physique. Ce qui le rend "automatique" n'est pas l'absence de fil,
+  c'est la brièveté du trajet. Ce nœud fait la même chose : un arc court,
+  mais toujours visible dans le canvas.</p>
+
+  <h3>msg.redclaw_trust (mode check)</h3>
+  <dl class="message-properties">
+    <dt>trustScore</dt><dd>0..1, score de confiance lissé (Laplace)</dd>
+    <dt>totalCalls</dt><dd>Nombre d'appels enregistrés</dd>
+    <dt>lastFailureReason</dt><dd>Raison du dernier échec si applicable</dd>
+  </dl>
+</script>
