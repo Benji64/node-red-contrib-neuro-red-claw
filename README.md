@@ -12,7 +12,7 @@
 ## Vision
 
 neuro-red-claw est un **framework d'agents IA cognitifs** pour Node-RED.
-Pas une maison automatisée. Un **système nerveux général** applicable à tout domaine :
+Un **système nerveux général** applicable à tout domaine :
 
 ```
 Smart Home · Hôpital · Usine · Smart City · Entreprise · Smart Building
