@@ -1,0 +1,12 @@
+node: redclaw-goal
+category: motivation
+outputs: 2
+description: >
+  Objectif mesurable persistant. Répond uniquement à "qu'essaie-t-on
+  d'accomplir" — ne décide jamais d'une action.
+reads: [payload, redclaw_goal, redclaw_goal.action]
+writes: [payload, redclaw_goal, goal_context]
+forbidden: [redclaw.tool, redclaw.params, redclaw_policy]
+notes: >
+  goal_context n'est lu par l'orchestrateur QUE si ce nœud est câblé
+  sur son chemin — lecture passive.

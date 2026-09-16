@@ -1,0 +1,8 @@
+node: neuro-chat
+category: interface
+outputs: 4
+description: Deux flux strictement séparés — CHAT (réactif) et ASSISTANCE (proactif).
+reads: [payload, topic, redclaw, redclaw.finalResponse, redclaw.success, chat_kind, chat_source, chat_category, redclaw_goal_achieved, redclaw_reflect, ora_perception, redclaw_hub_context]
+writes: [payload, sessionId, topic, ui_payload, ui_role, ui_ts, ui_source, ui_category]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: Un message proactif ne doit jamais apparaître dans l'historique du chat réactif, et inversement.

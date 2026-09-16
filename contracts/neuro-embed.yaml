@@ -1,0 +1,8 @@
+node: neuro-embed
+category: memory
+outputs: 2
+description: Mémoire sémantique — vectorise, stocke, recherche. Réduit le contexte de ~80%.
+reads: [payload, embed_action, sessionId, redclaw.skill, redclaw.userMessage]
+writes: [payload, embed_context, embed_results, embed_vector, embed_chars, embed_retrieved, embed_error]
+forbidden: [redclaw.tool, goal_context]
+notes: embed_context est une lecture passive côté orchestrateur — jamais injecté sans câblage explicite.

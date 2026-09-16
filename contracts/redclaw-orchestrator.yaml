@@ -1,0 +1,26 @@
+node: redclaw-orchestrator
+category: decision
+outputs: 3
+description: >
+  Fusionne RAISONNEMENT et DÉCISION en un seul appel LLM — le modèle
+  produit directement {action:"tool"} ou {action:"respond"}, sans
+  étape d'hypothèse séparée. Écart assumé, documenté dans CONTRACTS.md.
+reads:
+  - payload
+  - redclaw.skill
+  - redclaw.userMessage
+  - redclaw_call_id
+  - redclaw_llm_id
+  - redclaw_hub_callId
+  - redclaw_cmd
+  - sessionId
+  - goal_context
+  - trust_context
+  - longterm_context
+  - context_summary
+  - embed_context
+writes: [redclaw.tool, redclaw.params, redclaw_call_id, redclaw_request_id, redclaw_error, payload]
+forbidden: [redclaw_policy, redclaw_trust]
+notes: >
+  Seul nœud qui écrit redclaw.tool — c'est la frontière décision/exécution
+  du système.

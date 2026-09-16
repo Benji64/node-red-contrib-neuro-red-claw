@@ -1,0 +1,10 @@
+node: redclaw-observe
+category: perception
+outputs: 2
+description: >
+  Agrège des signaux bruts (capteurs, événements) en perception
+  unifiée. Phase O du cycle ORA. Aucune intelligence.
+reads: [payload, topic, ora_source, ora_key, ora_unit, ora_ttl, ora_trigger]
+writes: [payload, ora_perception, sessionId]
+forbidden: [redclaw.tool, redclaw_goal, redclaw_policy]
+notes: Ne décide jamais d'agir — produit une observation, jamais une action.

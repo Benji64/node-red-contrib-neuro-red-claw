@@ -1,0 +1,8 @@
+node: neuro-approval
+category: interface
+outputs: 3
+description: File d'attente humaine — consommateur de référence de redclaw-policy Output 2.
+reads: [redclaw, redclaw.tool, redclaw.params, redclaw_call_id, redclaw_policy, redclaw_policy.reason, redclaw_security, redclaw_security.reason, topic, payload]
+writes: [payload, redclaw_approval]
+forbidden: [redclaw.tool, redclaw.params]
+notes: Approuve/refuse seulement — renvoie le msg original inchangé côté approbation.

@@ -1,0 +1,13 @@
+node: mcp-adapter
+category: execution
+outputs: 2
+description: >
+  Traduit un tool call générique vers le format d'un nœud Node-RED
+  cible, et inversement pour la réponse.
+reads: [routeur, routeur.tool, routeur.params, routeur.callId, payload, redclaw_call_id]
+writes: [payload, redclaw_call_id, adaptateur, adaptateur.callId]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: >
+  "adaptateur" pré-initialisé avec { callId } avant le code utilisateur.
+  Un filtre de corrélation peut ignorer un msg sans jamais écrire —
+  comportement légitime, pas une violation.

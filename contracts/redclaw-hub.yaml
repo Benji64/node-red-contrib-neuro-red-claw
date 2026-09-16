@@ -1,0 +1,12 @@
+node: redclaw-hub
+category: routing
+outputs: dynamic
+description: >
+  Thalamus — registre des skills, délégation inter-agents. Jamais de
+  LLM, jamais de décision métier, jamais de politique.
+reads: [payload, sessionId, redclaw_hub, redclaw_hub.action, redclaw_hub.question, redclaw_hub.target, redclaw_hub_return]
+writes: [payload, sessionId, redclaw_hub_call]
+forbidden: [redclaw.tool, redclaw_policy, goal_context]
+notes: >
+  Route par nom vers des sorties explicitement câblées — jamais de
+  recherche globale implicite.

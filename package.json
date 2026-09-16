@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-neuro-red-claw",
-  "version": "2.13.0",
+  "version": "2.15.0",
   "description": "neuro-red-claw \u2014 Syst\u00e8me nerveux g\u00e9n\u00e9ral d'agents IA pour Node-RED. Framework cognitif multi-agents : skills, orchestration, m\u00e9moire, objectifs, observation, politiques, r\u00e9flexion. Le coding agent est un domain package s\u00e9par\u00e9 : node-red-contrib-neuro-red-claw-coding.",
   "keywords": [
     "node-red",
@@ -46,6 +46,7 @@
     }
   },
   "dependencies": {
+    "js-yaml": "^4.1.0",
     "node-fetch": "^2.7.0"
   },
   "engines": {
@@ -56,6 +57,8 @@
     "node-red-node-test-helper": "^0.3.6"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "contracts:docs": "node scripts/generate-contract-docs.js",
+    "contracts:check": "node scripts/check-contract-docs.js"
   }
 }

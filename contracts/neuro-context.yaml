@@ -1,0 +1,12 @@
+node: neuro-context
+category: context
+outputs: 2
+description: >
+  Assemble state/tickets/goals/constraints en un contexte cohérent
+  avant l'appel skill.
+reads: [redclaw, redclaw.skill, redclaw_hub_call, sessionId]
+writes: [neuro.context, context_summary]
+forbidden: [redclaw.tool, redclaw_goal, redclaw_policy]
+notes: >
+  Référence explicite optionnelle à redclaw-policy-config — jamais de
+  recherche globale par nom de skill.

@@ -1,0 +1,10 @@
+node: neuro-longterm
+category: memory
+outputs: 2
+description: Habitudes et patterns renforcés par répétition — la couche "Learning" au sens propre.
+reads: [payload, longterm_action, skillName, reflect_skill]
+writes: [payload, longterm_context, longterm_items]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: >
+  record()/reinforce() retournent des copies indépendantes (v2.10) —
+  jamais la référence mutable interne.

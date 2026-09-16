@@ -1,0 +1,12 @@
+node: redclaw-diverge
+category: analysis
+outputs: dynamic
+description: >
+  Pensée divergente — envoie le même signal vers N perspectives en
+  parallèle, agrège les réponses.
+reads: [payload, redclaw_diverge_return, redclaw_diverge_return.divergeId, redclaw_diverge_return.lensName, redclaw_diverge_return.response]
+writes: [redclaw_lens, redclaw_diverge_id, redclaw_frame_prompt, redclaw_diverge]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: >
+  Chevauche conceptuellement un "Decision Engine" évoqué dans des
+  propositions externes — à clarifier avant d'ajouter un nœud doublon.

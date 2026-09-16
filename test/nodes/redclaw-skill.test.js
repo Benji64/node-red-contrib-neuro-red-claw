@@ -65,4 +65,24 @@ describe("redclaw-skill", () => {
       n1.receive({ payload: "x", neuro: { id: "m1", trace: [] } });
     });
   });
+
+  it("respecte son contrat cognitif (contracts/redclaw-skill.yaml)", (t, done) => {
+    const { loadContract, snapshot, validate } = require("../../lib/cognitive-contract");
+    const contract = loadContract("redclaw-skill");
+    const flow = [
+      { id: "n1", type: "redclaw-skill", skillName: "energie", wires: [["out1"]] },
+      { id: "out1", type: "helper" },
+    ];
+    helper.load(redclawSkill, flow, () => {
+      const n1 = helper.getNode("n1");
+      const msgIn = { payload: "allume le salon" };
+      const before = snapshot(msgIn);
+      helper.getNode("out1").on("input", (msg) => {
+        const result = validate(contract, before, msg);
+        try { assert.equal(result.ok, true, result.violations.join("; ")); done(); }
+        catch (e) { done(e); }
+      });
+      n1.receive(msgIn);
+    });
+  });
 });

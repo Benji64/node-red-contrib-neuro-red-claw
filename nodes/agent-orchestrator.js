@@ -138,7 +138,7 @@ module.exports = function (RED) {
       msg.redclaw_request_id = trace.request_id;
 
       try {
-        const response = await _agentLoop(userMessage, skill, sessionId, msg, send, trace);
+        const response = await _agentLoop(userMessage, skill, sessionId, msg, send, trace, ticket);
         if (node.memoryEnabled) node.memory.addMessage(sessionId, "assistant", response);
 
         const finished = instrumentation.finish(trace, true);
@@ -172,7 +172,7 @@ module.exports = function (RED) {
     });
 
     // ─── BOUCLE AGENTIQUE ─────────────────────────────────────────────────────
-    async function _agentLoop(userMessage, skill, sessionId, origMsg, send, trace) {
+    async function _agentLoop(userMessage, skill, sessionId, origMsg, send, trace, ticket) {
       const historyCtx   = node.memoryEnabled ? node.memory.getSummary(sessionId, node.maxHistory) : "";
 
       // v1.5 — Renderer : compression contexte dans le budget token

@@ -1,0 +1,8 @@
+node: neuro-envelope
+category: routing
+outputs: 2
+description: Standardise un message au format msg.neuro, ou ajoute une étape de trace.
+reads: [payload, neuro, neuro.trace]
+writes: [neuro, neuro.id, neuro.type, neuro.source, neuro.trace]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: Copy-on-write systématique (v2.6) — un simple {...msg} en amont ne peut jamais faire fuiter une mutation.

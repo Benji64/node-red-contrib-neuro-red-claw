@@ -12,7 +12,7 @@
 ## Vision
 
 neuro-red-claw est un **framework d'agents IA cognitifs** pour Node-RED.
-Un **système nerveux général** applicable à tout domaine :
+Pas une maison automatisée. Un **système nerveux général** applicable à tout domaine :
 
 ```
 Smart Home · Hôpital · Usine · Smart City · Entreprise · Smart Building
@@ -93,6 +93,32 @@ COUCHE 0  Fondation           skill · orchestrateur · mcp-router · mcp-adapte
 |------|------|
 | `neuro-chat` | Chat LLM (réactif) + Assistance (proactif) — deux flux séparés, compatible Dashboard 2.0 |
 | `neuro-approval` | File d'approbation des actions humaines — timeout + auto-reject, consommateur de référence d'Output 2 sur `redclaw-policy` |
+
+### Domain packages séparés
+
+`neuro-red-claw` est le framework — le système nerveux générique. Une
+application vraiment distincte (coder, gérer une maison, un hôpital…)
+est un **domain package** séparé, qui se compose avec ces 21 nœuds sans
+jamais faire partie du core.
+
+- **v2.7** — le coding agent (bash, git, fichiers) extrait : sa surface
+  de sécurité (exécution shell) ne devrait pas être imposée à qui
+  installe le framework pour un tout autre domaine.
+- **v2.11 → v2.12** — le chat/l'approbation Dashboard 2.0 avaient été
+  extraits par le même principe (zéro dépendance de code), puis
+  **réintégrés** : contrairement au coding agent, ils ne portent aucun
+  risque de sécurité propre, et la séparation créait un vrai piège —
+  `neuro-approval` est le consommateur de référence d'Output 2 sur
+  `redclaw-policy` (RESTRICTED/SUPERVISED), l'oublier dans un package à
+  côté rendait facile de configurer des guardrails qui ne font rien.
+  `redclaw-policy` détecte toujours ce cas au démarrage (oubli de
+  câblage, pas d'installation) et avertit dans le canvas.
+
+| Package | Fournit |
+|---------|---------|
+| [`node-red-contrib-neuro-red-claw-coding`](https://www.npmjs.com/package/node-red-contrib-neuro-red-claw-coding) | `rc-coding-skill`, `rc-tool-bash`, `rc-tool-read-file`, `rc-tool-write-file`, `rc-tool-edit-file`, `rc-tool-search`, `rc-tool-git`, `rc-tool-list-dir` |
+
+---
 
 ## LLM supportés
 
@@ -305,6 +331,23 @@ msg.chat_category = "warning";     // optionnel : info|success|warning|alert
 [redclaw-policy] Output2 (RESTRICTED/SUPERVISED) ──► [neuro-approval] ──1──► [ui-template]
 [ui-button ✅] ──► [change: topic=approve, payload={actionId}] ──► [neuro-approval] ──2──► [mcp-router]
 [ui-button ✗]  ──► [change: topic=reject,  payload={actionId}] ──► [neuro-approval] ──3──► [log]
+```
+
+---
+
+## Contrats cognitifs
+
+18 nœuds contractés — reads/writes/forbidden par nœud, un validateur
+qui détecte toute mutation hors contrat pendant les tests (diff par
+valeur, jamais par référence), un analyseur qui vérifie deux
+propriétés structurelles du câblage d'un flow. Voir
+[`contracts/README.md`](contracts/README.md) et
+[`contracts/CONTRACTS.md`](contracts/CONTRACTS.md) (généré, ne jamais
+éditer à la main).
+
+```bash
+node scripts/generate-contract-docs.js   # régénère la doc
+node scripts/check-contract-docs.js      # vérifie qu'elle est à jour
 ```
 
 ---

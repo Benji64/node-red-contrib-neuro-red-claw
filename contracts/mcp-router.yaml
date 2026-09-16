@@ -1,0 +1,12 @@
+node: mcp-router
+category: execution
+outputs: dynamic
+description: >
+  Route un tool call décidé vers l'adapter concerné, résout la réponse
+  via callId. Ne décide jamais QUEL tool appeler.
+reads: [redclaw.tool, redclaw.params, redclaw_call_id, adaptateur, adaptateur.callId]
+writes: [routeur, routeur.tool, routeur.params, routeur.callId, payload, redclaw_call_id, redclaw_error]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: >
+  v2.8 — lit adaptateur.callId en priorité, redclaw_call_id en repli
+  (fix du décalage de contrat découvert par test réel).

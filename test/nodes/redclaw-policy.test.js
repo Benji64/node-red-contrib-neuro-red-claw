@@ -171,4 +171,26 @@ describe("redclaw-policy", () => {
       }, 50);
     });
   });
+
+  it("respecte son contrat cognitif (contracts/redclaw-policy.yaml)", (t, done) => {
+    const { loadContract, snapshot, validate } = require("../../lib/cognitive-contract");
+    const contract = loadContract("redclaw-policy");
+    const flow = [
+      { id: "n1", type: "redclaw-policy", logDecisions: false,
+        policies: JSON.stringify([{ name: "x", condition: "true", level: 0, priority: 50, scope: "all", active: true }]),
+        wires: [["out1"], ["out2"], ["out3"]] },
+      { id: "out1", type: "helper" }, { id: "out2", type: "helper" }, { id: "out3", type: "helper" },
+    ];
+    helper.load(redclawPolicy, flow, () => {
+      const n1 = helper.getNode("n1");
+      const msgIn = { redclaw: { tool: "turn_on", params: { state: "ON" } } };
+      const before = snapshot(msgIn);
+      helper.getNode("out3").on("input", (msg) => {
+        const result = validate(contract, before, msg);
+        try { assert.equal(result.ok, true, result.violations.join("; ")); done(); }
+        catch (e) { done(e); }
+      });
+      n1.receive(msgIn);
+    });
+  });
 });

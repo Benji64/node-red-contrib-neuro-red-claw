@@ -1,6 +1,104 @@
 # Changelog — node-red-contrib-neuro-red-claw
 
-## [2.13.0]
+## [2.15.0]
+
+### Cognitive Contract System
+Suite à deux documents d'architecture externes proposant un "contrat
+cognitif" par nœud (tableau Word) et un cycle cognitif formalisé — les
+deux contenaient des inexactitudes factuelles dès leur première
+version (`conversation-memory`/`ticket-store` traités comme des nœuds
+de flux alors que ce sont des libs internes ; `redclaw-policy` décrit
+comme ne participant jamais à la décision alors qu'il détermine
+physiquement le routage). Un document jamais vérifié automatiquement
+finit par diverger du code en silence — exactement le risque que ce
+système corrige.
+
+Quatre composants :
+- **`contracts/*.yaml`** — 18 nœuds cognitifs contractés (reads/writes/
+  forbidden/notes). 3 nœuds de configuration (`llm-config`,
+  `embed-config`, `redclaw-policy-config`) explicitement exclus et
+  documentés comme tels — pas oubliés.
+- **`lib/cognitive-contract.js`** — validateur, diff strictement PAR
+  VALEUR (jamais par référence, après les 4 bugs de référence mutable
+  trouvés plus tôt dans ce projet). 9 tests.
+- **`lib/cognitive-graph-analyzer.js`** — analyse structurelle statique
+  d'un `flows.json` (jamais l'ordre temporel réel — ça reste le rôle
+  du système de trace runtime `neuro-envelope`). Règle A (reflection
+  n'atteint jamais execution sans point de contrôle) et Règle C (tout
+  cycle contient routing ou execution). 8 tests, dont un test de
+  non-régression contre l'architecture réelle du projet.
+- **`scripts/generate-contract-docs.js`** + **`check-contract-docs.js`**
+  — `contracts/CONTRACTS.md` généré depuis les YAML, vérifié en CI.
+
+**Deux vraies inexactitudes trouvées dans MES PROPRES contrats**,
+par les 3 tests d'intégration qui exercent le validateur contre de
+vrais nœuds (pas seulement des cas synthétiques) :
+- `redclaw-policy` réécrit `payload` avec la raison du refus sur
+  Output 3 (BLOCKED) — absent de ma première version du contrat.
+- `neuro-chat` écrit aussi `ui_payload`/`ui_role`/`ui_ts`/`ui_source`/
+  `ui_category` — également oubliés au premier passage.
+
+Ni l'un ni l'autre n'était un bug du nœud — les deux étaient des trous
+dans le contrat lui-même, trouvés en confrontant l'affirmation au
+comportement réel plutôt qu'en se relisant.
+
+**Un vrai bug trouvé dans l'analyseur avant livraison** : la Règle C
+initiale ("tout cycle doit contenir routing") générait un faux positif
+sur l'architecture de référence elle-même — `mcp-router↔mcp-adapter`
+et `orchestrateur→policy→router→orchestrateur` sont des cycles
+légitimes protégés par timeout au niveau du code, invisibles à
+l'analyse statique du câblage seul. Reformulée : routing OU execution.
+Trouvé par un test qui reconstruit le câblage documenté dans le README
+et vérifie qu'il passe ses propres règles — jamais aurait été trouvé
+sans ce test de non-régression.
+
+**Un bug de coloration DFS**, indépendant : `color[nextId] === 0`
+pour détecter "jamais visité", alors qu'une clé absente d'un objet JS
+vaut `undefined`, pas `0` — la récursion interne ne se déclenchait
+jamais, seule la boucle externe visitait chaque nœud isolément, et
+aucun cycle n'était jamais détecté. Trouvé en traçant l'exécution pas
+à pas plutôt qu'en relisant le code une fois de plus.
+
+### Incident d'environnement — sixième et septième occurrences
+Le répertoire de travail a disparu intégralement six fois pendant ce
+chantier précis (sur un total de sept occurrences depuis le début de
+la session), la pire en plein milieu de la reconstruction des 18
+contrats + validateur + analyseur. Changement de méthode : packager et
+livrer un zip intermédiaire dès qu'un sous-ensemble cohérent est
+testé, plutôt que d'attendre la fin des 4 composants — deux checkpoints
+livrés avant la version finale. Rien perdu au final, mais la cause
+reste externe à ce projet.
+
+Suite complète : 78 tests, tous verts.
+
+---
+
+
+
+### Le premier test qui exerce vraiment l'orchestrateur — et trouve un vrai bug
+57 tests, et pas un seul n'avait jamais appelé `agent-orchestrator.js`
+ni `llm-client.js`. Tous les tests précédents — y compris le premier
+e2e "vrai serveur" — contournaient la décision LLM avec un nœud
+`change` qui construit `msg.redclaw` directement. Aucune clé API ni
+accès réseau pour un vrai modèle dans ce sandbox, mais un vrai serveur
+HTTP au format OpenAI-compatible, scripté en séquence sur 2 tours
+(décision tool, puis synthèse finale avec texte parasite + fences
+markdown volontaires) suffit à exercer 100% du code d'intégration réel
+— protocole, extraction, boucle complète — tout sauf la qualité du
+raisonnement, non testable de façon déterministe de toute façon.
+
+**`test/e2e/real-llm-loop.test.js`** — a immédiatement révélé un vrai
+bug de scope : `ticket` déclaré dans le handler principal mais jamais
+passé à `_agentLoop()`, qui l'utilise pourtant (tracking des tool
+calls). `ReferenceError: ticket is not defined` au premier appel réel.
+Invisible dans tous les tests précédents puisqu'aucun n'exécutait ce
+chemin de code. Fix : `ticket` ajouté à la signature et à l'appel.
+
+Suite : 58 tests, tous verts après le fix.
+
+---
+
+
 
 ### neuro-chat — deux flux strictement séparés
 Jusqu'ici un seul historique mélangeait tout ce qui transitait par le

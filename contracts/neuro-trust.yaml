@@ -1,0 +1,8 @@
+node: neuro-trust
+category: memory
+outputs: 2
+description: Mémoire sémantique de fiabilité, auto-alimentée par le tracking de l'orchestrateur.
+reads: [redclaw.skill, redclaw.tool, sessionId, payload]
+writes: [redclaw_trust, trust_context]
+forbidden: [redclaw.tool, redclaw_policy]
+notes: Formule de lissage de Laplace — converge avec l'usage plutôt qu'un ratio brut trompeur.
