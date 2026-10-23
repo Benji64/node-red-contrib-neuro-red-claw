@@ -60,23 +60,46 @@
       (node.skills || []).forEach(s => $("#node-input-skill-container").editableList("addItem", s));
 
       // Boutons de visualisation
-      $("#rc-hub-registry").on("click", () => {
-        fetch("/redclaw/hub").then(r=>r.json()).then(d => {
-          const lines = (d.skills||[]).map(s =>
-            `${s.status==="offline"?"⚫":"🟢"} ${s.name} · tools: ${s.tools||"—"}`
+      async function getAdminJson(url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          let details;
+          try {
+            details = await response.json();
+          } catch {}
+          throw new Error(details?.error || `HTTP ${response.status}`);
+        }
+        return response.json();
+      }
+      $("#rc-hub-registry").on("click", async () => {
+        try {
+          const data = await getAdminJson("/redclaw/hub");
+          if (!data || !Array.isArray(data.skills)) {
+            throw new Error("Réponse du registre skills invalide");
+          }
+          const lines = data.skills.map(skill =>
+            `${skill.status==="offline"?"⚫":"🟢"} ${skill.name} · tools: ${skill.tools||"—"}`
           ).join("\n");
-          alert(`Registre (${(d.skills||[]).length}) :\n\n${lines||"Aucun"}`);
-        }).catch(e => RED.notify(e.message,"error"));
+          alert(`Registre (${data.skills.length}) :\n\n${lines||"Aucun"}`);
+        } catch (error) {
+          RED.notify(error.message, "error");
+        }
       });
-      $("#rc-hub-goals").on("click", () => {
-        fetch("/redclaw/hub/goals").then(r=>r.json()).then(d => {
-          if (!d.goals?.length) return RED.notify("Aucun objectif","info");
+      $("#rc-hub-goals").on("click", async () => {
+        try {
+          const data = await getAdminJson("/redclaw/hub/goals");
+          if (!data || !Array.isArray(data.goals)) {
+            throw new Error("Réponse des objectifs invalide");
+          }
+          if (!data.goals.length) return RED.notify("Aucun objectif","info");
           const ICONS = {achieved:"✅",failed:"❌",paused:"⏸",active:"🎯"};
-          const lines = d.goals.map(g =>
+          const lines = data.goals.map(g =>
             `${ICONS[g.status]||"🎯"} [${g.priority}] ${g.name}\n   ${Math.round((g.progress||0)*100)}% — ${g.current??"-"}${g.unit}/${g.target}${g.unit}`
           ).join("\n\n");
           alert(`Objectifs :\n\n${lines}`);
-        }).catch(e => RED.notify(e.message,"error"));
+        } catch (error) {
+          RED.notify(error.message, "error");
+        }
       });
     },
 
@@ -112,6 +135,15 @@
   <div class="form-row">
     <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
     <input type="number" id="node-input-timeout" min="5000" step="5000" style="width:120px;" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-memoryDir"><i class="fa fa-folder-open"></i> Répertoire mémoire</label>
+    <input type="text" id="node-input-memoryDir"
+      placeholder="Vide : redclaw-memory dans le profil Node-RED"
+      style="font-family:monospace;" />
+    <div style="font-size:0.78em;color:#888;margin-left:104px;">
+      Dossier de persistance de la mémoire de conversation du Hub. Vide pour conserver le chemin par défaut.
+    </div>
   </div>
   <div class="form-row">
     <input type="checkbox" id="node-input-debugMode" style="width:auto;" />

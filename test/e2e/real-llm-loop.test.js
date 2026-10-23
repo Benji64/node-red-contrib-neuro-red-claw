@@ -90,6 +90,9 @@ const FLOW = [
 
   { id: "policy1", type: "redclaw-policy", z: "tab1", name: "policy",
     policies: "[]", logDecisions: false,
+    wires: [["security1"], ["errresp1"], ["errresp1"]] },
+  { id: "security1", type: "security-gate", z: "tab1", name: "security",
+    rules: JSON.stringify([{ tool: "turn_on", action: "allow", riskCategories: ["technical"], impact: "low" }]),
     wires: [["router1"], ["errresp1"], ["errresp1"]] },
 
   { id: "router1", type: "mcp-router", z: "tab1", name: "router",
@@ -145,9 +148,13 @@ before(async () => {
   await new Promise(r => setTimeout(r, 800));
 });
 
-after(() => {
-  if (proc) proc.kill();
-  if (mockServer) mockServer.close();
+after(async () => {
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
+    const exited = new Promise(resolve => proc.once("exit", resolve));
+    proc.kill();
+    await exited;
+  }
+  if (mockServer) await new Promise(resolve => mockServer.close(resolve));
   if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
 });
 

@@ -23,17 +23,35 @@ RED.nodes.registerType("neuro-longterm", {
     $("#node-input-mode").on("change", toggle);
     toggle();
 
-    $("#rc-lt-view").on("click", function () {
+    $("#rc-lt-view").on("click", async function () {
       const skill = $("#node-input-skillName").val() || "";
-      fetch(`/redclaw/longterm${skill?"?skill="+skill:""}`).then(r=>r.json()).then(d => {
-        if (!d.memories?.length) return RED.notify("Aucun souvenir long terme","info");
+      const query = skill ? `?skill=${encodeURIComponent(skill)}` : "";
+      try {
+        const response = await fetch(`/redclaw/longterm${query}`);
+        if (!response.ok) {
+          let details;
+          try {
+            details = await response.json();
+          } catch {}
+          throw new Error(details?.error || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data || !Array.isArray(data.memories) ||
+            data.memories.some(memory => !memory || typeof memory !== "object" ||
+              !Number.isFinite(memory.confidence) || memory.confidence < 0 || memory.confidence > 1 ||
+              !Number.isInteger(memory.occurrences) || memory.occurrences < 0)) {
+          throw new Error("Réponse de mémoire long terme invalide");
+        }
+        if (!data.memories.length) return RED.notify("Aucun souvenir long terme","info");
         const ICONS = { habit:"🔁", pattern:"📊", fact:"📌" };
-        const lines = d.memories
+        const lines = data.memories
           .sort((a,b)=>b.confidence-a.confidence)
           .map(m => `${ICONS[m.type]||"•"} ${m.content}\n   ${Math.round(m.confidence*100)}% — vu ${m.occurrences}×`)
           .join("\n\n");
-        alert(`Mémoire long terme (${d.memories.length}) :\n\n${lines}`);
-      }).catch(e=>RED.notify(e.message,"error"));
+        alert(`Mémoire long terme (${data.memories.length}) :\n\n${lines}`);
+      } catch (error) {
+        RED.notify(error.message,"error");
+      }
     });
   },
 });

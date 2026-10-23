@@ -33,3 +33,19 @@ test("unregister() marque bien offline pour les lectures suivantes", () => {
   reg.unregister("s");
   assert.equal(reg.get("s").status, "offline");
 });
+
+test("une ancienne instance ne peut pas désenregistrer son remplacement", () => {
+  const reg = new SkillRegistry();
+  reg.register("energie", "old-node", { context: "ancien" });
+  reg.register("energie", "new-node", { context: "nouveau" });
+
+  reg.unregister("energie", "old-node");
+
+  assert.deepEqual(
+    { nodeId: reg.get("energie").nodeId, context: reg.get("energie").context, status: reg.get("energie").status },
+    { nodeId: "new-node", context: "nouveau", status: "active" },
+  );
+
+  reg.unregister("energie", "new-node");
+  assert.equal(reg.get("energie").status, "offline");
+});

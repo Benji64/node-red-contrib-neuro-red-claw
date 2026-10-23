@@ -33,9 +33,24 @@ function generate() {
       lines.push(`### \`${c.node}\``, "");
       if (c.description) lines.push(c.description.trim(), "");
       lines.push(`**Sorties :** ${c.outputs}`, "");
+      if (c.outputSemantics.length) {
+        lines.push(`**Sémantique des sorties :** ${c.outputSemantics.map((semantic, index) =>
+          `Output ${index + 1} = \`${semantic}\``
+        ).join(", ")}`, "");
+      }
       lines.push(`**Lit :** ${c.reads.length ? c.reads.map(r => `\`${r}\``).join(", ") : "_rien_"}`);
       lines.push(`**Écrit :** ${c.writes.length ? c.writes.map(w => `\`${w}\``).join(", ") : "_rien_"}`);
+      if (c.owns.length) lines.push(`**Domaines possédés :** ${c.owns.map(scope => `\`${scope}\``).join(", ")}`);
       if (c.forbidden.length) lines.push(`**Interdit (piège documenté) :** ${c.forbidden.map(f => `\`${f}\``).join(", ")}`);
+      if (c.responsibilities.length) {
+        lines.push(`**Responsabilités :** ${c.responsibilities.map(item => `\`${item}\``).join(", ")}`);
+      }
+      if (c.authority.length) {
+        lines.push(`**Autorité déclarée :** ${c.authority.map(item => `\`${item}\``).join(", ")}`);
+      }
+      if (c.cannot.length) {
+        lines.push(`**Ne peut pas :** ${c.cannot.map(item => `\`${item}\``).join(", ")}`);
+      }
       if (c.notes) lines.push("", `> ${c.notes.trim().replace(/\n/g, "\n> ")}`);
       lines.push("", "---", "");
     }

@@ -1,6 +1,47 @@
 # Changelog — node-red-contrib-neuro-red-claw
 
-## [2.15.0]
+## [2.16.0]
+
+### Priorité 1 — deux vrais bugs dans redclaw-diverge, angle mort comblé
+Aucun test n'existait pour ce nœud jusqu'ici — 21 nœuds, mais celui-ci
+n'avait jamais été exercé.
+
+- **Bug timeout** : `node._sessions.delete(divergeId)` était appelé
+  AVANT `node._sessions.get(divergeId)` dans le callback du timer — la
+  session lue valait donc toujours `undefined`, peu importe le nombre
+  de réponses déjà reçues. Le commentaire disait "timeout partiel :
+  retourne ce qu'on a reçu", le code faisait l'inverse : rejet total
+  systématique avec le message trompeur "0 réponse reçue". Fix :
+  inverser l'ordre des deux lignes.
+- **Stratégie "majority"** : documentée dans le commentaire de config
+  depuis la création du nœud, jamais implémentée — la condition de
+  résolution ne testait que `wait_all`/`first_wins`. Le nœud se
+  comportait silencieusement comme `wait_all`. Implémentée : résout
+  dès que strictement plus de la moitié des lenses ont répondu.
+  Absente du `<select>` de l'éditeur aussi — ajoutée.
+
+4 tests verrouillent les deux comportements corrigés (timeout partiel
+résout avec les réponses reçues, timeout total rejette proprement,
+majority résout sans attendre la dernière réponse, first_wins inchangé).
+
+### Contrat + analyseur — un 3e oubli du même type, et un faux positif en cascade
+Le test d'intégration contrat sur redclaw-diverge (même pattern que
+redclaw-policy et neuro-chat en v2.15) a trouvé une 3e occurrence du
+même oubli : `payload` est réécrit sur la sortie ⚡ avec le tableau
+des réponses agrégées, absent de mon contrat initial. Corrigé.
+
+En corrigeant le bug timeout, le graph analyzer (`CYCLE_SAFE_CATEGORIES`)
+s'est révélé émettre un faux positif sur tout cycle passant par
+redclaw-diverge — sa catégorie "analysis" n'était pas reconnue comme
+ayant un timeout vérifié, alors qu'elle en a bien un (le même pattern
+structurel que mcp-router/mcp-adapter). Ajoutée à la liste, testée en
+non-régression.
+
+Suite complète : 84 tests, tous verts.
+
+---
+
+
 
 ### Cognitive Contract System
 Suite à deux documents d'architecture externes proposant un "contrat

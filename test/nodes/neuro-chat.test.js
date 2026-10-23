@@ -5,6 +5,7 @@
  */
 const { describe, it, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
+const { EventEmitter } = require("node:events");
 const helper = require("node-red-node-test-helper");
 const neuroChat = require("../../nodes/neuro-chat.js");
 
@@ -12,6 +13,98 @@ helper.init(require.resolve("node-red"));
 
 describe("neuro-chat", () => {
   afterEach(() => helper.unload());
+
+  function instantiateNode(config) {
+    let registeredConstructor;
+    const warnings = [];
+    const RED = {
+      nodes: {
+        createNode(node) {
+          node.id = "config-test";
+        },
+        registerType(_name, constructor) {
+          registeredConstructor = constructor;
+        },
+      },
+    };
+    neuroChat(RED);
+    const node = new EventEmitter();
+    node.status = () => {};
+    node.warn = warning => warnings.push(warning);
+    node.log = () => {};
+    node.error = () => {};
+    registeredConstructor.call(node, config);
+    return { node, warnings };
+  }
+
+  it("does not invoke configuration accessors", () => {
+    let getterInvoked = false;
+    const config = {};
+    for (const key of ["skillTarget", "maxHistory", "uiTitle", "assistTitle"]) {
+      Object.defineProperty(config, key, {
+        enumerable: true,
+        get() {
+          getterInvoked = true;
+          throw new Error(`${key} getter invoked`);
+        },
+      });
+    }
+
+    const { node, warnings } = instantiateNode(config);
+
+    assert.equal(getterInvoked, false);
+    assert.equal(node.skillTarget, "");
+    assert.equal(node.maxHistory, 50);
+    assert.equal(node.uiTitle, "neuro-red-claw Chat");
+    assert.equal(node.assistTitle, "Assistance");
+    assert.equal(warnings.length, 4);
+  });
+
+  it("does not invoke configuration Proxy traps", () => {
+    let trapInvoked = false;
+    const config = new Proxy({}, {
+      getOwnPropertyDescriptor() {
+        trapInvoked = true;
+        throw new Error("configuration Proxy trap invoked");
+      },
+    });
+
+    const { node } = instantiateNode(config);
+
+    assert.equal(trapInvoked, false);
+    assert.equal(node.skillTarget, "");
+    assert.equal(node.maxHistory, 50);
+  });
+
+  it("defaults malformed settings and preserves valid display settings", () => {
+    const { node, warnings } = instantiateNode({
+      skillTarget: {},
+      maxHistory: "0",
+      uiTitle: {},
+      assistTitle: "",
+    });
+
+    assert.equal(node.skillTarget, "");
+    assert.equal(node.maxHistory, 50);
+    assert.equal(node.uiTitle, "neuro-red-claw Chat");
+    assert.equal(node.assistTitle, "Assistance");
+    assert.equal(warnings.length, 3);
+  });
+
+  it("accepts valid settings and positive integer strings", () => {
+    const { node, warnings } = instantiateNode({
+      skillTarget: "  energie  ",
+      maxHistory: "25",
+      uiTitle: "Chat énergie",
+      assistTitle: "Aide",
+    });
+
+    assert.equal(node.skillTarget, "energie");
+    assert.equal(node.maxHistory, 25);
+    assert.equal(node.uiTitle, "Chat énergie");
+    assert.equal(node.assistTitle, "Aide");
+    assert.deepEqual(warnings, []);
+  });
 
   it("message utilisateur → Output 1 (chat) + Output 2 (skill), jamais Output 4", (t, done) => {
     const flow = [

@@ -22,26 +22,68 @@
 const observationStore = require("../lib/observation-store");
 const ticketStore      = require("../lib/ticket-store");
 const goalStore        = require("../lib/goal-store");
+const { createHash }   = require("node:crypto");
 const { buildPolicyContext } = require("../lib/policy-engine");
 const NeuroMessage     = require("../lib/neuro-message");
+const { parseFiniteInteger } = require("../lib/numeric");
+const { types } = require("node:util");
 
 module.exports = function (RED) {
   function NeuroContextNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.includeState   = config.includeState   !== false;
-    node.includeTickets = config.includeTickets !== false;
-    node.includeGoals   = config.includeGoals   !== false;
-    node.includeConstraints = config.includeConstraints !== false;
-    node.ticketLimit     = parseInt(config.ticketLimit, 10) || 5;
-    node.skillFilter      = (config.skillFilter || "").trim(); // vide = auto depuis msg
+    function readConfigValue(key) {
+      if (!config || typeof config !== "object" || types.isProxy(config)) {
+        node.warn("[neuro-context] Configuration must be a plain object; using defaults");
+        return undefined;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(config, key);
+      if (!descriptor) return undefined;
+      if (!Object.hasOwn(descriptor, "value")) {
+        node.warn(`[neuro-context] Configuration "${key}" must be a data property; using its default`);
+        return undefined;
+      }
+      return descriptor.value;
+    }
+    function readConfigBoolean(key, fallback) {
+      const value = readConfigValue(key);
+      if (value === undefined) return fallback;
+      if (typeof value !== "boolean") {
+        node.warn(`[neuro-context] Configuration "${key}" must be a boolean; using its default`);
+        return fallback;
+      }
+      return value;
+    }
+
+    node.includeState   = readConfigBoolean("includeState", true);
+    node.includeTickets = readConfigBoolean("includeTickets", true);
+    node.includeGoals   = readConfigBoolean("includeGoals", true);
+    node.includeConstraints = readConfigBoolean("includeConstraints", true);
+    const configuredTicketLimit = readConfigValue("ticketLimit");
+    const ticketLimit = parseFiniteInteger(configuredTicketLimit);
+    node.ticketLimit = ticketLimit !== null && ticketLimit >= 1 && ticketLimit <= 20
+      ? ticketLimit
+      : 5;
+    if (configuredTicketLimit !== undefined && configuredTicketLimit !== "" &&
+        (ticketLimit === null || ticketLimit < 1 || ticketLimit > 20)) {
+      node.warn('[neuro-context] Configuration "ticketLimit" must be an integer between 1 and 20; using 5');
+    }
+    const configuredSkillFilter = readConfigValue("skillFilter");
+    if (configuredSkillFilter !== undefined && typeof configuredSkillFilter !== "string") {
+      node.warn('[neuro-context] Configuration "skillFilter" must be a string; using an empty value');
+    }
+    node.skillFilter = typeof configuredSkillFilter === "string" ? configuredSkillFilter.trim() : "";
 
     // v2.5 — référence EXPLICITE, comme llmConfig. Plus de lecture d'un
     // registre global de politiques : si aucun policy-config n'est
     // sélectionné ici, context.constraints reste simplement vide.
-    node.policyConfig = config.policyConfig
-      ? RED.nodes.getNode(config.policyConfig)
+    const configuredPolicyId = readConfigValue("policyConfig");
+    if (configuredPolicyId !== undefined && typeof configuredPolicyId !== "string") {
+      node.warn('[neuro-context] Configuration "policyConfig" must be a string; ignoring the reference');
+    }
+    node.policyConfig = typeof configuredPolicyId === "string" && configuredPolicyId
+      ? RED.nodes.getNode(configuredPolicyId)
       : null;
 
     node.status({ fill:"green", shape:"dot", text:"Context Engine" });
@@ -92,6 +134,7 @@ module.exports = function (RED) {
             policyContext: buildPolicyContext(node.policyConfig.policies, null, null),
           };
         }
+        context.provenance = _contextProvenance(context, skillName);
 
         // ── Enveloppe le message au format standard ─────────────────────
         NeuroMessage.wrap(msg, {
@@ -142,8 +185,36 @@ module.exports = function (RED) {
       return parts.join("\n");
     }
 
+    function _contextProvenance(context, scope) {
+      const sources = {};
+      if (Object.hasOwn(context, "state")) sources.state = "observation-store";
+      if (Object.hasOwn(context, "tickets")) sources.tickets = "ticket-store";
+      if (Object.hasOwn(context, "goals")) sources.goals = "goal-store";
+      if (Object.hasOwn(context, "constraints")) sources.constraints = "policy-config";
+      const canonicalProvenanceInput = JSON.stringify(_canonicalize({
+        context,
+        scope,
+        sources,
+      }));
+      const digest = createHash("sha256").update(canonicalProvenanceInput).digest("hex");
+      return {
+        contextVersion: `sha256:${digest}`,
+        schemaVersion: 1,
+        scope,
+        sources,
+      };
+    }
+
     node.on("close", () => node.status({}));
   }
 
   RED.nodes.registerType("neuro-context", NeuroContextNode);
 };
+
+function _canonicalize(value) {
+  if (Array.isArray(value)) return value.map(_canonicalize);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value).sort().map(key => [key, _canonicalize(value[key])])
+  );
+}

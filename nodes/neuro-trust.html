@@ -27,15 +27,35 @@ RED.nodes.registerType("neuro-trust", {
     $("#node-input-mode").on("change", toggle);
     toggle();
 
-    $("#rc-trust-view").on("click", function () {
-      fetch("/redclaw/trust").then(r=>r.json()).then(d => {
-        if (!d.trust?.length) return RED.notify("Aucune donnée de confiance encore — câbler le mode record d'abord", "info");
-        const lines = d.trust
+    $("#rc-trust-view").on("click", async function () {
+      try {
+        const response = await fetch("/redclaw/trust");
+        if (!response.ok) {
+          let details;
+          try {
+            details = await response.json();
+          } catch {}
+          throw new Error(details?.error || `HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (!data || !Array.isArray(data.trust) ||
+            data.trust.some(item => !item || typeof item !== "object" ||
+              typeof item.skill !== "string" || typeof item.tool !== "string" ||
+              !Number.isFinite(item.trustScore) || item.trustScore < 0 || item.trustScore > 1 ||
+              !Number.isInteger(item.totalCalls) || item.totalCalls < 0 ||
+              (item.lastFailureReason !== null && item.lastFailureReason !== undefined &&
+                typeof item.lastFailureReason !== "string"))) {
+          throw new Error("Réponse des données de confiance invalide");
+        }
+        if (!data.trust.length) return RED.notify("Aucune donnée de confiance encore — câbler le mode record d'abord", "info");
+        const lines = data.trust
           .sort((a,b)=>a.trustScore-b.trustScore)
           .map(t => `${t.trustScore<0.7?"⚠️":"✅"} ${t.skill}.${t.tool} : ${Math.round(t.trustScore*100)}% (${t.totalCalls} appels)${t.lastFailureReason?" — dernier échec: "+t.lastFailureReason:""}`)
           .join("\n");
-        alert(`Confiance des tools (${d.trust.length}) :\n\n${lines}`);
-      }).catch(e=>RED.notify(e.message,"error"));
+        alert(`Confiance des tools (${data.trust.length}) :\n\n${lines}`);
+      } catch (error) {
+        RED.notify(error.message,"error");
+      }
     });
   },
 });

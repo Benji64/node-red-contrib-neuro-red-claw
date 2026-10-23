@@ -8,7 +8,7 @@ RED.nodes.registerType("neuro-embed", {
     mode:        { value: "both" },
     storeName:   { value: "default" },
     storeDir:    { value: "" },
-    k:           { value: 5 },
+    topK:        { value: 5 },
     threshold:   { value: 0.5 },
     maxChars:    { value: 2000 },
     maxDocs:     { value: 10000 },
@@ -28,6 +28,10 @@ RED.nodes.registerType("neuro-embed", {
   },
 
   oneditprepare: function () {
+    if (this.topK === undefined && this.k !== undefined) {
+      $("#node-input-topK").val(this.k);
+    }
+
     function toggleMode() {
       const m = $("#node-input-mode").val();
       $(".rc-embed-search").toggle(m === "search" || m === "both" || m === "auto");
@@ -35,14 +39,29 @@ RED.nodes.registerType("neuro-embed", {
     $("#node-input-mode").on("change", toggleMode);
     toggleMode();
 
-    $("#rc-embed-stats").on("click", function () {
+    $("#rc-embed-stats").on("click", async function () {
       const name = $("#node-input-storeName").val() || "default";
-      fetch(`/redclaw/vectors/${name}`)
-        .then(r=>r.json())
-        .then(d => RED.notify(
-          `Store "${d.name}" : ${d.docs} docs · ${d.dims} dims`, "info"
-        ))
-        .catch(e => RED.notify(e.message, "error"));
+      try {
+        const response = await fetch(`/redclaw/vectors/${encodeURIComponent(name)}`);
+        if (!response.ok) {
+          let details;
+          try {
+            details = await response.json();
+          } catch {}
+          throw new Error(details?.error || `HTTP ${response.status}`);
+        }
+        const stats = await response.json();
+        if (!stats || typeof stats.name !== "string" ||
+            !Number.isInteger(stats.docs) || !Number.isInteger(stats.dims)) {
+          throw new Error("Réponse de statistiques invalide");
+        }
+        RED.notify(
+          `Store "${stats.name}" : ${stats.docs} docs · ${stats.dims} dims`,
+          "info"
+        );
+      } catch (error) {
+        RED.notify(error.message, "error");
+      }
     });
   },
 });
@@ -80,6 +99,16 @@ RED.nodes.registerType("neuro-embed", {
   </div>
 
   <div class="form-row">
+    <label for="node-input-storeDir"><i class="fa fa-folder-open"></i> Répertoire</label>
+    <input type="text" id="node-input-storeDir"
+      placeholder="Vide : répertoire redclaw-vectors par défaut"
+      style="font-family:monospace;" />
+    <div style="font-size:0.78em;color:#888;margin-left:104px;">
+      Dossier de persistance des vecteurs. Vide pour utiliser le profil utilisateur Node-RED.
+    </div>
+  </div>
+
+  <div class="form-row">
     <label for="node-input-maxDocs"><i class="fa fa-list-ol"></i> Max docs</label>
     <input type="number" id="node-input-maxDocs" min="100" step="1000"
       style="width:100px;" />
@@ -97,7 +126,7 @@ RED.nodes.registerType("neuro-embed", {
     <div style="display:flex;gap:12px;flex-wrap:wrap;">
       <div style="flex:1;min-width:80px;">
         <label style="display:block;font-size:0.82em;color:#666;">Top-K résultats</label>
-        <input type="number" id="node-input-k" min="1" max="20"
+        <input type="number" id="node-input-topK" min="1" max="20"
           style="width:100%;" />
       </div>
       <div style="flex:1;min-width:80px;">

@@ -28,15 +28,57 @@
  */
 
 const skillTrust = require("../lib/skill-trust");
+const { types } = require("node:util");
+const { parseFiniteNumber } = require("../lib/numeric");
 
 module.exports = function (RED) {
   function NeuroTrustNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.mode      = config.mode      || "check";
-    node.threshold = parseFloat(config.threshold) || 0.7;
-    node.alertOnFailure = config.alertOnFailure !== false;
+    function readConfigValue(key) {
+      if (!config || typeof config !== "object" || types.isProxy(config)) {
+        node.warn("[neuro-trust] Configuration must be a plain object; using defaults");
+        return undefined;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(config, key);
+      if (!descriptor) return undefined;
+      if (!Object.hasOwn(descriptor, "value")) {
+        node.warn(`[neuro-trust] Configuration "${key}" must be a data property; using its default`);
+        return undefined;
+      }
+      return descriptor.value;
+    }
+    function readConfigBoolean(key, fallback) {
+      const value = readConfigValue(key);
+      if (value === undefined) return fallback;
+      if (typeof value !== "boolean") {
+        node.warn(`[neuro-trust] Configuration "${key}" must be a boolean; using its default`);
+        return fallback;
+      }
+      return value;
+    }
+
+    const configuredMode = readConfigValue("mode");
+    const supportedModes = new Set(["record", "check", "view", "reset"]);
+    if (configuredMode !== undefined && typeof configuredMode !== "string") {
+      node.warn('[neuro-trust] Configuration "mode" must be a string; using "check"');
+    } else if (configuredMode && !supportedModes.has(configuredMode.trim())) {
+      node.warn('[neuro-trust] Configuration "mode" is unsupported; using "check"');
+    }
+    const mode = typeof configuredMode === "string" ? configuredMode.trim() : "";
+    node.mode = supportedModes.has(mode) ? mode : "check";
+    const configuredThreshold = readConfigValue("threshold");
+    const threshold = parseFiniteNumber(configuredThreshold);
+    node.threshold = threshold !== null && threshold >= 0 && threshold <= 1
+      ? threshold
+      : 0.7;
+    if (configuredThreshold !== undefined && threshold === null) {
+      node.warn('[neuro-trust] Configuration "threshold" must be a finite number; using 0.7');
+    } else if (threshold !== null && (threshold < 0 || threshold > 1)) {
+      node.warn('[neuro-trust] Configuration "threshold" must be between 0 and 1; using 0.7');
+    }
+    node.alertOnFailure = readConfigBoolean("alertOnFailure", true);
 
     node.status({ fill:"green", shape:"dot",
       text:`${node.mode} · ${skillTrust.all().length} tool(s) suivis` });

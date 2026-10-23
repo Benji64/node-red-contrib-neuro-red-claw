@@ -1,5 +1,18 @@
 <script type="text/javascript">
 (function () {
+  function configuredTools(node) {
+    return Array.isArray(node.tools) ? node.tools : [];
+  }
+
+  function configuredToolName(tool) {
+    if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
+    const descriptor = Object.getOwnPropertyDescriptor(tool, "name");
+    return descriptor && Object.hasOwn(descriptor, "value") &&
+      typeof descriptor.value === "string"
+      ? descriptor.value.trim()
+      : "";
+  }
+
   RED.nodes.registerType("mcp-router", {
     category: "neuro-red-claw",
     color:    "#f9e2af",
@@ -14,12 +27,17 @@
     outputs: 1,
     icon:    "font-awesome/fa-random",
     label: function () {
-      const n = (this.tools || []).filter(t => t.name).length;
-      return this.name || `MCP Router (${n} tool${n > 1 ? "s" : ""})`;
+      const n = configuredTools(this).filter(tool => configuredToolName(tool)).length;
+      return this.name || `MCP Router (${n} tool${n === 1 ? "" : "s"})`;
     },
     outputLabels: function (i) {
-      const tools = (this.tools || []).filter(t => t.name);
-      if (i < tools.length) return `→ adapter: ${tools[i].name}`;
+      const tools = configuredTools(this);
+      if (i < tools.length) {
+        const name = configuredToolName(tools[i]);
+        return name
+          ? `→ adapter: ${name}`
+          : "→ adapter (configuration invalide)";
+      }
       return "⚡ Retour Orchestrateur";
     },
 
@@ -34,7 +52,7 @@
         removable: true,
         addButton: "Ajouter un tool",
         addItem: function (container, i, data) {
-          data = data || {};
+          const name = configuredToolName(data);
           container.css({ padding: "6px 4px" });
           const badge = $("<span>")
             .css({ background:"#f9e2af", color:"#7a5c00", borderRadius:"4px",
@@ -45,7 +63,7 @@
           const nameInput = $("<input type='text'>")
             .attr("placeholder", "nom_tool")
             .css({ flex:"1", fontWeight:"600", fontFamily:"monospace" })
-            .val(data.name || "");
+            .val(name);
           const row = $("<div>").css({ display:"flex", gap:"6px", alignItems:"center" });
           row.append(badge, nameInput);
           container.append(row);
@@ -58,7 +76,7 @@
           });
         },
       });
-      (node.tools || []).forEach(t => {
+      configuredTools(node).forEach(t => {
         $("#node-input-tool-container").editableList("addItem", t);
       });
     },
@@ -119,10 +137,10 @@
 
   <div style="font-size:0.78em;background:#fffbe6;padding:7px;border-radius:4px;
               border:1px solid #f0d060;line-height:1.8;margin-top:4px;">
-    <b>msg.routeur en sortie</b> : <code>{ tool, params, callId }</code><br/>
+    <b>msg.routeur en sortie</b> : <code>{ tool, params, callId }</code> (<code>callId</code> interne et unique)<br/>
     L'adapter lit <code>msg.routeur.tool</code> pour confirmer son tool.<br/>
-    L'adapter retourne <code>msg.adaptateur</code> sur le Router.<br/>
-    Le Router lit <code>msg.adaptateur</code> → envoie sur ⚡.
+    L'adapter retourne <code>msg.adaptateur</code> avec son <code>callId</code> sur le Router.<br/>
+    Le Router ignore les retours sans <code>callId</code> valide → envoie sur ⚡ avec le <code>redclaw_call_id</code> d'origine.
   </div>
 </script>
 
@@ -138,7 +156,7 @@
   </pre>
   <h3>Protocole</h3>
   <dl class="message-properties">
-    <dt>msg.routeur (sortie)</dt><dd>{ tool, params, callId } → lu par l'adapter</dd>
-    <dt>msg.adaptateur (entrée)</dt><dd>Résultat retourné par l'adapter</dd>
+    <dt>msg.routeur (sortie)</dt><dd>{ tool, params, callId } ; <code>callId</code> interne de corrélation lu par l'adapter</dd>
+    <dt>msg.adaptateur (entrée)</dt><dd>Résultat retourné par l'adapter ; <code>callId</code> propre requis pour corréler la réponse</dd>
   </dl>
 </script>

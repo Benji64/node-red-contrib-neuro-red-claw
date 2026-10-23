@@ -1,6 +1,6 @@
 {
   "name": "node-red-contrib-neuro-red-claw",
-  "version": "2.15.0",
+  "version": "2.17.0",
   "description": "neuro-red-claw \u2014 Syst\u00e8me nerveux g\u00e9n\u00e9ral d'agents IA pour Node-RED. Framework cognitif multi-agents : skills, orchestration, m\u00e9moire, objectifs, observation, politiques, r\u00e9flexion. Le coding agent est un domain package s\u00e9par\u00e9 : node-red-contrib-neuro-red-claw-coding.",
   "keywords": [
     "node-red",
@@ -42,7 +42,8 @@
       "neuro-longterm": "nodes/neuro-longterm.js",
       "redclaw-policy-config": "nodes/redclaw-policy-config.js",
       "neuro-chat": "nodes/neuro-chat.js",
-      "neuro-approval": "nodes/neuro-approval.js"
+      "neuro-approval": "nodes/neuro-approval.js",
+      "redclaw-response-review": "nodes/redclaw-response-review.js"
     }
   },
   "dependencies": {
@@ -57,8 +58,13 @@
     "node-red-node-test-helper": "^0.3.6"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test --test-concurrency=1",
     "contracts:docs": "node scripts/generate-contract-docs.js",
-    "contracts:check": "node scripts/check-contract-docs.js"
+    "contracts:check": "node scripts/check-contract-docs.js",
+    "architecture:report": "node scripts/architecture-report.js",
+    "check:nodes": "node scripts/check-nodes-load.js",
+    "check:graph": "node scripts/check-cognitive-graph.js",
+    "check:editor": "node scripts/check-editor-consistency.js",
+    "ci": "npm run check:nodes && npm run check:editor && npm run check:graph && npm test && npm run contracts:check"
   }
 }

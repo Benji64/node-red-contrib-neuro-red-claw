@@ -46,3 +46,36 @@ test("lowTrust ne remonte que sous le seuil ET avec un minimum d'échantillons",
   trust.record("s", "flaky", false, 100, "err"); // 3 échecs, 0 succès — maintenant significatif
   assert.equal(trust.lowTrust(0.7).length, 1);
 });
+
+test("les noms composites de skill/tool ne peuvent pas entrer en collision", () => {
+  const trust = new SkillTrust(tmpDir("trust-composite-key"));
+  trust.record("home::lights", "turn_on", true, 100);
+  trust.record("home", "lights::turn_on", false, 500, "timeout");
+
+  assert.equal(trust.getSkillTrust("home::lights").length, 1);
+  assert.equal(trust.getSkillTrust("home").length, 1);
+  assert.equal(trust.getTrust("home::lights", "turn_on").success, 1);
+  assert.equal(trust.getTrust("home", "lights::turn_on").failure, 1);
+
+  trust.reset("home::lights", "turn_on");
+  assert.equal(trust.getTrust("home::lights", "turn_on"), null);
+  assert.equal(trust.getTrust("home", "lights::turn_on").failure, 1);
+});
+
+test("le chargement ignore les entrées corrompues sans perdre les suivantes", t => {
+  const storageDir = tmpDir("trust-partial-load");
+  fs.writeFileSync(path.join(storageDir, "trust.json"), JSON.stringify([
+    { skill: "valid", tool: "before", success: 2, failure: 0, totalDuration: 100 },
+    null,
+    { skill: "invalid", tool: "counts", success: -1, failure: 0, totalDuration: 0 },
+    { skill: "valid", tool: "after", success: 1, failure: 1, totalDuration: 300 },
+  ]));
+
+  const trust = new SkillTrust(storageDir);
+  t.after(() => trust.destroy());
+
+  assert.deepEqual(trust.all().map(({ tool }) => tool), ["before", "after"]);
+  assert.equal(trust.getTrust("valid", "before").totalCalls, 2);
+  assert.equal(trust.getTrust("valid", "after").totalCalls, 2);
+  assert.equal(trust.getTrust("invalid", "counts"), null);
+});

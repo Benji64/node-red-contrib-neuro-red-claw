@@ -59,6 +59,46 @@ test("modifyFn ne s'applique que pour ALLOWED/PROMOTED", () => {
   assert.equal(result.modified_params.brightness, 80);
 });
 
+test("un niveau explicite invalide échoue de manière sûre", () => {
+  for (const level of [-1, 2.5, 5, "4"]) {
+    const result = evaluate({ redclaw: { tool: "x" } }, [{
+      name: "Invalid level",
+      condition: "true",
+      level,
+      active: true,
+      scope: "all",
+    }]);
+
+    assert.equal(result.level, LEVELS.BLOCKED);
+    assert.equal(result.label, "BLOCKED");
+    assert.equal(result.allowed, false);
+  }
+});
+
+test("les entrées de politique nulles sont ignorées sans erreur", () => {
+  assert.equal(evaluate({ redclaw: { tool: "x" } }, [null]).allowed, true);
+  assert.equal(buildPolicyContext([null]), "");
+  assert.equal(evaluate({ redclaw: { tool: "x" } }, {}).allowed, true);
+  assert.equal(buildPolicyContext({}), "");
+});
+
+test("la politique renvoyée ne permet pas de modifier la configuration source", () => {
+  const sourcePolicy = {
+    name: "Block",
+    condition: "true",
+    level: LEVELS.BLOCKED,
+    active: true,
+    scope: "all",
+  };
+  const result = evaluate({ redclaw: { tool: "x" } }, [sourcePolicy]);
+
+  result.policy.condition = "false";
+  result.policy.level = LEVELS.ALLOWED;
+
+  assert.equal(sourcePolicy.condition, "true");
+  assert.equal(sourcePolicy.level, LEVELS.BLOCKED);
+});
+
 test("buildPolicyContext ne résume que le jeu fourni, pas un registre global", () => {
   const policiesA = [{ name: "Règle A", level: LEVELS.BLOCKED, priority: 90, scope: "all", active: true }];
   const policiesB = [{ name: "Règle B", level: LEVELS.PROMOTED, priority: 99, scope: "all", active: true }];
@@ -68,4 +108,15 @@ test("buildPolicyContext ne résume que le jeu fourni, pas un registre global", 
   assert.doesNotMatch(ctxA, /Règle B/);
   assert.match(ctxB, /Règle B/);
   assert.doesNotMatch(ctxB, /Règle A/);
+});
+
+test("buildPolicyContext normalise les niveaux explicites invalides", () => {
+  const context = buildPolicyContext([{
+    name: "Invalid level",
+    level: 5,
+    active: true,
+    scope: "all",
+  }]);
+
+  assert.match(context, /\[BLOCKED\|/);
 });

@@ -3,7 +3,7 @@ RED.nodes.registerType("embed-config", {
   category: "config",
   defaults: {
     name:     { value: "" },
-    type:     { value: "ollama" },
+    backend:  { value: "ollama" },
     baseUrl:  { value: "http://localhost:11434" },
     model:    { value: "mxbai-embed-large" },
     timeout:  { value: 15000 },
@@ -12,7 +12,7 @@ RED.nodes.registerType("embed-config", {
   },
   credentials: { apiKey: { type: "password" } },
   label: function () {
-    return this.name || `${this.type} · ${this.model}`;
+    return this.name || `${this.backend} · ${this.model}`;
   },
 
   oneditprepare: function () {
@@ -24,33 +24,41 @@ RED.nodes.registerType("embed-config", {
     };
 
     function updatePreset() {
-      const t = $("#node-config-input-type").val();
-      const p = PRESETS[t] || {};
+      const backend = $("#node-config-input-backend").val();
+      const preset = PRESETS[backend] || {};
       if (!$("#node-config-input-baseUrl").val() ||
           Object.values(PRESETS).some(x => x.url === $("#node-config-input-baseUrl").val())) {
-        $("#node-config-input-baseUrl").val(p.url || "");
+        $("#node-config-input-baseUrl").val(preset.url || "");
       }
       if (!$("#node-config-input-model").val() ||
           Object.values(PRESETS).some(x => x.model === $("#node-config-input-model").val())) {
-        $("#node-config-input-model").val(p.model || "");
+        $("#node-config-input-model").val(preset.model || "");
       }
-      $(".rc-embed-rest").toggle(t === "rest");
-      $(".rc-embed-key").toggle(t === "openai");
+      $(".rc-embed-rest").toggle(backend === "rest");
+      $(".rc-embed-key").toggle(backend === "openai");
     }
 
-    $("#node-config-input-type").on("change", updatePreset);
+    $("#node-config-input-backend").on("change", updatePreset);
     updatePreset();
 
     $("#rc-embed-test").on("click", function () {
       const btn = $(this).text("Test…").prop("disabled", true);
       $.post("/redclaw/embed/test", {
-        type: $("#node-config-input-type").val(),
+        backend: $("#node-config-input-backend").val(),
         baseUrl: $("#node-config-input-baseUrl").val(),
         model: $("#node-config-input-model").val(),
         timeout: $("#node-config-input-timeout").val(),
+        restPath: $("#node-config-input-restPath").val(),
+        apiKey: $("#node-config-input-apiKey").val(),
       }).done(d => {
+        if (!d || d.ok !== true || !Number.isInteger(d.dims) || d.dims <= 0) {
+          btn.text("❌ Erreur").css("color","red");
+          RED.notify("Erreur : réponse du test embedding invalide", "error");
+          setTimeout(() => btn.text("Tester").css("color","").prop("disabled",false), 2000);
+          return;
+        }
         btn.text("✅ OK").css("color","green");
-        if (d.dims) $("#node-config-input-dims").val(d.dims);
+        $("#node-config-input-dims").val(d.dims);
         setTimeout(() => btn.text("Tester").css("color","").prop("disabled",false), 2000);
       }).fail(e => {
         btn.text("❌ Erreur").css("color","red");
@@ -62,6 +70,12 @@ RED.nodes.registerType("embed-config", {
 });
 </script>
 
+<script type="text/html" data-help-name="embed-config">
+  <p>Configuration partagée d’un fournisseur d’embeddings utilisé par le nœud <code>neuro-embed</code>.</p>
+  <p>La clé API est conservée comme credential Node-RED. Le bouton de test vérifie le backend et détecte la dimension du vecteur.</p>
+  <p>Les vecteurs reçus sont vérifiés : ils doivent contenir uniquement des nombres finis et conserver la dimension détectée.</p>
+</script>
+
 <script type="text/html" data-template-name="embed-config">
   <div class="form-row">
     <label for="node-config-input-name"><i class="fa fa-tag"></i> Nom</label>
@@ -69,8 +83,8 @@ RED.nodes.registerType("embed-config", {
   </div>
 
   <div class="form-row">
-    <label for="node-config-input-type"><i class="fa fa-server"></i> Backend</label>
-    <select id="node-config-input-type" style="width:75%;">
+    <label for="node-config-input-backend"><i class="fa fa-server"></i> Backend</label>
+    <select id="node-config-input-backend" style="width:75%;">
       <option value="ollama">Ollama</option>
       <option value="localai">LocalAI / LM Studio</option>
       <option value="openai">OpenAI</option>

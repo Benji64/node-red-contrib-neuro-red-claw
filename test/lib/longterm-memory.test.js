@@ -35,6 +35,30 @@ test("get() ne permet pas de muter le store depuis l'extérieur", () => {
   assert.notEqual(store.get(mem.id).confidence, 999);
 });
 
+test("les requêtes et les valeurs fournies ne partagent pas de référence avec le store", () => {
+  const store = new LongtermMemory(tmpDir("lt-copy-isolation"));
+  const content = { summary: { text: "original" }, tags: ["fact"] };
+  const created = store.record("s", "fact", content);
+  content.summary.text = "input mutation";
+  content.tags.push("input mutation");
+  created.content.summary.text = "return mutation";
+
+  const expected = {
+    summary: { text: "original" },
+    tags: ["fact"],
+  };
+  assert.deepEqual(store.get(created.id).content, expected);
+
+  const fetched = store.get(created.id);
+  fetched.content.summary.text = "get mutation";
+  const bySkill = store.bySkill("s");
+  bySkill[0].content.tags.push("skill mutation");
+  const all = store.all();
+  all[0].content.summary.text = "all mutation";
+
+  assert.deepEqual(store.get(created.id).content, expected);
+});
+
 test("buildContext applique une décroissance temporelle sur les souvenirs non revus", () => {
   const store = new LongtermMemory(tmpDir("lt-c"));
   store.record("s", "habit", "récent");

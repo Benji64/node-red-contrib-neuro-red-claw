@@ -9,6 +9,7 @@
       outputs:  { value: 1 },
       timeout:  { value: 30000 },
       strategy: { value: "wait_all" },
+      treeAdapter: { value: false },
     },
     inputs:  1,
     outputs: 1,
@@ -91,13 +92,30 @@
     <select id="node-input-strategy" style="width:75%;">
       <option value="wait_all">Attendre toutes les réponses</option>
       <option value="first_wins">Première réponse gagne</option>
+      <option value="majority">Majorité des perspectives (&gt; 50%)</option>
     </select>
   </div>
   <div class="form-row">
     <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
     <input type="number" id="node-input-timeout" min="5000" step="5000" style="width:110px;" />
   </div>
+  <div class="form-row">
+    <label for="node-input-treeAdapter"><i class="fa fa-sitemap"></i> Tree Reasoner</label>
+    <input type="checkbox" id="node-input-treeAdapter" style="width:auto;vertical-align:middle;" />
+    <span style="font-size:0.78em;color:#888;">Ajouter une représentation cognitive des retours</span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-treeRulesVersion"><i class="fa fa-tag"></i> Version règles</label>
+    <input type="text" id="node-input-treeRulesVersion" placeholder="ex. policy-2026-10" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-treeRules"><i class="fa fa-list"></i> Règles Tree</label>
+    <textarea id="node-input-treeRules" rows="4" style="width:70%;font-family:monospace;" placeholder='[{"id":"cite","type":"contains","value":"source","required":true}]'></textarea>
+    <div style="font-size:0.78em;color:#888;">Optionnel : règles déterministes (contains, not_contains, min_length, max_length). Des règles peuvent se déclarer mutuellement opposées avec <code>opposes</code>. Cela classe seulement les résultats configurés, sans prouver vérité ni sûreté. Sans règles, seule la réception est évaluée.</div>
+  </div>
 
+  <div class="form-row" style="margin-bottom:4px;">
+    <label><i class="fa fa-code-fork"></i> Perspectives cognitives</label>
   <div class="form-row" style="margin-bottom:4px;">
     <label><i class="fa fa-code-fork"></i> Perspectives cognitives</label>
     <div style="font-size:0.78em;color:#888;margin-bottom:4px;line-height:1.5;">
@@ -118,7 +136,10 @@
     <code>  ├─ 2 ──► [skill: sécurité]   ──► [Orch B] Output2 ──► [Diverge]</code><br/>
     <code>  └─ ⚡ ──► [skill: synthèse]  ──► [Orch convergence]</code><br/><br/>
     Les orchestrateurs renvoient via<br/>
-    <code>msg.redclaw_diverge_return = { divergeId, lensName, response }</code>
+    <code>msg.redclaw_diverge_return = { divergeId, lensName, response }</code><br/><br/>
+    L'adaptateur Tree optionnel ajoute une représentation des branches sous
+    <code>msg.redclaw_diverge.tree</code>. Il évalue uniquement la réception
+    d'une réponse, jamais sa qualité, et n'autorise aucune exécution.
   </div>
 </script>
 

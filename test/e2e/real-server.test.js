@@ -42,6 +42,9 @@ const FLOW = [
     wires: [["policy1"]] },
   { id: "policy1", type: "redclaw-policy", z: "tab1", name: "policy",
     agentRole: "default", policies: "[]", logDecisions: false,
+    wires: [["security1"], ["blocked"], ["blocked"]] },
+  { id: "security1", type: "security-gate", z: "tab1", name: "security",
+    rules: JSON.stringify([{ tool: "turn_on", action: "allow", riskCategories: ["technical"], impact: "low" }]),
     wires: [["router1"], ["blocked"], ["blocked"]] },
   { id: "blocked", type: "http response", z: "tab1", statusCode: "500", headers: {} },
   { id: "router1", type: "mcp-router", z: "tab1", name: "router",
@@ -99,8 +102,12 @@ before(async () => {
   await new Promise(r => setTimeout(r, 800)); // marge pour que le flow soit pleinement actif
 });
 
-after(() => {
-  if (proc) proc.kill();
+after(async () => {
+  if (proc && proc.exitCode === null && proc.signalCode === null) {
+    const exited = new Promise(resolve => proc.once("exit", resolve));
+    proc.kill();
+    await exited;
+  }
   if (workDir) fs.rmSync(workDir, { recursive: true, force: true });
 });
 

@@ -28,32 +28,96 @@
 const VectorStore = require("../lib/vector-store");
 const path        = require("path");
 const os          = require("os");
+const { types }   = require("node:util");
+const { parseFiniteInteger, parseFiniteNumber } = require("../lib/numeric");
 
 module.exports = function (RED) {
   function NeuroEmbedNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.mode         = config.mode        || "both";
-    node.storeName    = (config.storeName  || "default").trim();
-    node.k            = parseInt(config.k, 10)         || 5;
-    node.threshold    = parseFloat(config.threshold)   || 0.5;
-    node.maxChars     = parseInt(config.maxChars, 10)  || 2000;
-    node.metaFields   = (config.metaFields || "sessionId,skill,role").split(",").map(s=>s.trim());
+    function readConfigValue(key) {
+      if (!config || typeof config !== "object" || types.isProxy(config)) {
+        node.warn("[neuro-embed] Configuration must be a plain object; using defaults");
+        return undefined;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(config, key);
+      if (!descriptor) return undefined;
+      if (!Object.hasOwn(descriptor, "value")) {
+        node.warn(`[neuro-embed] Configuration "${key}" must be a data property; using its default`);
+        return undefined;
+      }
+      return descriptor.value;
+    }
+    function readConfigString(key, fallback) {
+      const value = readConfigValue(key);
+      if (value === undefined) return fallback;
+      if (typeof value !== "string") {
+        node.warn(`[neuro-embed] Configuration "${key}" must be a string; using its default`);
+        return fallback;
+      }
+      return value;
+    }
+    function readConfigInteger(key, fallback, isValid, requirement) {
+      const value = readConfigValue(key);
+      const number = parseFiniteInteger(value);
+      if ((value === undefined || value === "") && fallback !== null) return fallback;
+      if (number !== null && isValid(number)) return number;
+      if (value !== undefined && value !== "") {
+        node.warn(`[neuro-embed] Configuration "${key}" must be ${requirement}; using ${fallback}`);
+      }
+      return fallback;
+    }
+
+    const supportedModes = new Set(["store", "search", "both", "auto"]);
+    const configuredMode = readConfigString("mode", "both").trim();
+    if (configuredMode && !supportedModes.has(configuredMode)) {
+      node.warn('[neuro-embed] Configuration "mode" is unsupported; using "both"');
+    }
+    node.mode = supportedModes.has(configuredMode) ? configuredMode : "both";
+    const configuredStoreName = readConfigString("storeName", "default").trim();
+    node.storeName = configuredStoreName || "default";
+    // Keep reading k for flows saved before the palette field was renamed.
+    const configuredTopK = readConfigValue("topK");
+    const topKValue = configuredTopK !== undefined ? configuredTopK : readConfigValue("k");
+    const topK = parseFiniteInteger(topKValue);
+    node.topK = topK !== null && topK >= 1 && topK <= 20 ? topK : 5;
+    if (topKValue !== undefined && topKValue !== "" && (topK === null || topK < 1 || topK > 20)) {
+      node.warn('[neuro-embed] Configuration "topK" must be an integer between 1 and 20; using 5');
+    }
+    const thresholdValue = readConfigValue("threshold");
+    const threshold = parseFiniteNumber(thresholdValue);
+    node.threshold    = threshold !== null && threshold >= 0 && threshold <= 1
+      ? threshold
+      : 0.5;
+    if (thresholdValue !== undefined && thresholdValue !== "" &&
+        (threshold === null || threshold < 0 || threshold > 1)) {
+      node.warn('[neuro-embed] Configuration "threshold" must be between 0 and 1; using 0.5');
+    }
+    node.maxChars = readConfigInteger(
+      "maxChars", 2000, value => value >= 200, "an integer of at least 200"
+    );
+    const storeMaxDocs = readConfigInteger(
+      "maxDocs", 10000, value => value >= 100, "an integer of at least 100"
+    );
+    const configuredMetaFields = readConfigString("metaFields", "sessionId,skill,role");
+    node.metaFields = (configuredMetaFields || "sessionId,skill,role").split(",").map(s => s.trim());
 
     // Récupère le nœud de config embedding
-    node.embedConfig  = config.embedConfig
-      ? RED.nodes.getNode(config.embedConfig)
+    const configuredEmbedId = readConfigString("embedConfig", "");
+    node.embedConfig  = configuredEmbedId
+      ? RED.nodes.getNode(configuredEmbedId)
       : null;
 
     // Store vecteurs persistant
-    const storeDir = config.storeDir?.trim()
+    const configuredStoreDir = readConfigString("storeDir", "").trim();
+    const storeDir = configuredStoreDir
       || path.join(RED.settings.userDir || os.homedir()+"/.node-red", "redclaw-vectors");
 
     node.store = new VectorStore({
       name:       node.storeName,
       storageDir: storeDir,
-      maxDocs:    parseInt(config.maxDocs, 10) || 10000,
+      maxDocs:    storeMaxDocs,
     });
 
     node.status({
@@ -106,7 +170,7 @@ module.exports = function (RED) {
             : null;
 
           const ctx = node.store.buildContext(vector, node.maxChars, {
-            k: node.k, threshold: node.threshold, filter,
+            k: node.topK, threshold: node.threshold, filter,
           });
 
           node.status({ fill:"green", shape:"dot",

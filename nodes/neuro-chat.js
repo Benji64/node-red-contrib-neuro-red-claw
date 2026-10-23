@@ -36,15 +36,48 @@
  *  Output 4 → ASSISTANCE — mise à jour → ui-template / ui-list (Dashboard 2.0)
  */
 
+const { parseFiniteInteger, positiveIntegerOrDefault } = require("../lib/numeric");
+const { types } = require("node:util");
+
 module.exports = function (RED) {
   function NeuroChatNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.skillTarget = (config.skillTarget || "").trim();
-    node.maxHistory  = parseInt(config.maxHistory, 10) || 50;
-    node.uiTitle     = config.uiTitle     || "neuro-red-claw Chat";
-    node.assistTitle = config.assistTitle || "Assistance";
+    function readConfigValue(key) {
+      if (!config || typeof config !== "object" || types.isProxy(config)) {
+        node.warn("[neuro-chat] Configuration must be a plain object; using defaults");
+        return undefined;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(config, key);
+      if (!descriptor) return undefined;
+      if (!Object.hasOwn(descriptor, "value")) {
+        node.warn(`[neuro-chat] Configuration "${key}" must be a data property; using its default`);
+        return undefined;
+      }
+      return descriptor.value;
+    }
+    function readConfigString(key, fallback) {
+      const value = readConfigValue(key);
+      if (value === undefined) return fallback;
+      if (typeof value !== "string") {
+        node.warn(`[neuro-chat] Configuration "${key}" must be a string; using its default`);
+        return fallback;
+      }
+      return value;
+    }
+
+    node.skillTarget = readConfigString("skillTarget", "").trim();
+    const configuredMaxHistory = readConfigValue("maxHistory");
+    const parsedMaxHistory = parseFiniteInteger(configuredMaxHistory);
+    const maxHistory = positiveIntegerOrDefault(configuredMaxHistory, 50);
+    if (configuredMaxHistory !== undefined && configuredMaxHistory !== "" &&
+        (parsedMaxHistory === null || parsedMaxHistory < 1)) {
+      node.warn('[neuro-chat] Configuration "maxHistory" must be a positive integer; using 50');
+    }
+    node.maxHistory = maxHistory;
+    node.uiTitle = readConfigString("uiTitle", "neuro-red-claw Chat") || "neuro-red-claw Chat";
+    node.assistTitle = readConfigString("assistTitle", "Assistance") || "Assistance";
 
     // Deux historiques strictement indépendants
     node._conversations = []; // [{ role, content, ts, skill, success }] — Q&A uniquement

@@ -7,6 +7,7 @@ RED.nodes.registerType("neuro-approval", {
     timeout:    { value: 300000 },
     maxQueue:   { value: 20 },
     autoReject: { value: false },
+    requireAuthenticatedReviewer: { value: false },
   },
   inputs:  1,
   outputs: 3,
@@ -48,6 +49,12 @@ RED.nodes.registerType("neuro-approval", {
       Refuser automatiquement à expiration
     </label>
   </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-requireAuthenticatedReviewer" style="width:auto;" />
+    <label for="node-input-requireAuthenticatedReviewer" style="width:auto;margin-left:5px;">
+      Exiger une revue authentifiée (désactive les décisions Dashboard directes)
+    </label>
+  </div>
 
   <div style="font-size:0.78em;background:#fffbe6;padding:8px;border-radius:5px;
               border:1px solid #f9e2af;line-height:1.8;margin-top:6px;">
@@ -60,6 +67,12 @@ RED.nodes.registerType("neuro-approval", {
     <code>[neuro-approval] ──3──► [ui-notification]</code><br/><br/>
     <b>Format bouton Dashboard (msg.payload) :</b><br/>
     <code>{ actionId: "abc12345" }</code>
+    <br/><br/>
+    <b>Mode strict :</b> les messages Dashboard directs ne peuvent pas prouver
+    l'identité du réviseur. Activez l'option ci-dessus pour les refuser, puis
+    utilisez l'API admin authentifiée <code>POST /redclaw/approvals/:nodeId/:actionId</code>
+    avec <code>{"decision":"approve"}</code> ou <code>{"decision":"reject"}</code>
+    (permission <code>flows.write</code>).
   </div>
 </script>
 
@@ -67,6 +80,11 @@ RED.nodes.registerType("neuro-approval", {
   <p><b>neuro-red-claw — Approval UI</b><br/>
   File d'attente des actions à valider humainement.<br/>
   Compatible Dashboard 2.0 via ui-template et ui-button.</p>
+  <p>Le mode strict facultatif exige un utilisateur Node-RED authentifié via
+  <code>flows.write</code> pour chaque décision, par
+  <code>POST /redclaw/approvals/:nodeId/:actionId</code>. Il rejette les
+  décisions injectées directement depuis Dashboard, dont l'identité ne peut
+  pas être vérifiée par ce nœud.</p>
 
   <h3>Câblage complet</h3>
   <pre style="font-size:10px;">

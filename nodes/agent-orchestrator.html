@@ -1,13 +1,43 @@
 <script type="text/javascript">
+function readTreeGeneratorRows() {
+  return [1, 2, 3, 4].map(index => ({
+    llmConfig: String($(`#node-input-treeGeneratorConfig${index}`).val() || "").trim(),
+    label: String($(`#node-input-treeGeneratorExternal${index}`).val() || "").trim(),
+  }));
+}
+
 RED.nodes.registerType("redclaw-orchestrator", {
   category: "neuro-red-claw",
   color:    "#cba6f7",
   defaults: {
     name:          { value: "" },
+    outputs:       { value: 8 },
     llmMode:       { value: "internal" },
     llmConfig:     { value: "", type: "llm-config" },
+    evaluatorLlmConfig: { value: "", type: "llm-config" },
+    safetyLlmConfig: { value: "", type: "llm-config" },
+    reasoningMode: { value: "legacy" },
+    treeGenerators: { value: [] },
+    treeGeneratorConfig1: { value: "", type: "llm-config" },
+    treeGeneratorConfig2: { value: "", type: "llm-config" },
+    treeGeneratorConfig3: { value: "", type: "llm-config" },
+    treeGeneratorConfig4: { value: "", type: "llm-config" },
+    treeGeneratorExternal1: { value: "" },
+    treeGeneratorExternal2: { value: "" },
+    treeGeneratorExternal3: { value: "" },
+    treeGeneratorExternal4: { value: "" },
+    treeSafetyEnabled: { value: false },
+    treeSafetyReviewEnabled: { value: false },
+    strictToolAllowlist: { value: false },
     memoryEnabled: { value: true },
     memoryDir:     { value: "" },
+    runStorageDir: { value: "" },
+    configurationVersion: { value: "" },
+    promptVersion: { value: "" },
+    modelVersion: { value: "" },
+    contextVersion: { value: "" },
+    policyVersion: { value: "" },
+    contractVersion: { value: "" },
     maxSteps:      { value: 5 },
     maxHistory:    { value: 6 },
     ttlHours:      { value: 24 },
@@ -15,13 +45,22 @@ RED.nodes.registerType("redclaw-orchestrator", {
     tokenBudget:   { value: 3000 },
   },
   inputs:  1,
-  outputs: 3,
+  outputs: 8,
   icon:    "font-awesome/fa-magic",
-  outputLabels: [
-    "→ Security Gate / MCP Router",
-    "→ Réponse utilisateur",
-    "→ LLM externe (mode externe)",
-  ],
+  outputLabels: function (index) {
+    const fixed = [
+      "→ Security Gate / MCP Router",
+      "→ Réponse utilisateur",
+      "→ LLM externe (mode externe)",
+      "→ Revue humaine d'une réponse Tree",
+    ];
+    if (index < fixed.length) return fixed[index];
+    const generatorIndex = index - fixed.length;
+    if (generatorIndex >= 4) return undefined;
+    const generator = this.treeGenerators?.[generatorIndex];
+    const label = generator?.label || `LLM ${generatorIndex + 1}`;
+    return `→ Générateur Tree : ${label}`;
+  },
   label: function () { return this.name || "Orchestrateur"; },
 
   oneditprepare: function () {
@@ -33,8 +72,27 @@ RED.nodes.registerType("redclaw-orchestrator", {
       return `${icon} [${t.id}] ${t.skill}\n  "${(t.user_message||"").slice(0,60)}"\n  ${dur} · ${t.tokens_in||0}tk · steps:[${(t.steps||[]).join("→")}]${tools?" · tools:"+tools:""}${t.error?" · ERR:"+t.error.slice(0,60):""}`;
     }
 
-    $("#rc-btn-stats").on("click", function () {
-      fetch("/redclaw/stats").then(r=>r.json()).then(d => {
+    async function getAdminJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) {
+        let details;
+        try {
+          details = await response.json();
+        } catch {}
+        throw new Error(details?.error || `HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+    function isRecord(value) {
+      return value !== null && typeof value === "object" && !Array.isArray(value);
+    }
+
+    $("#rc-btn-stats").on("click", async function () {
+      try {
+        const d = await getAdminJson("/redclaw/stats");
+        if (!isRecord(d) || !isRecord(d.tickets) || !isRecord(d.instrumentation)) {
+          throw new Error("Réponse des statistiques invalide");
+        }
         const t = d.tickets, i = d.instrumentation;
         const msg = "── Tickets ──\n"
           + (t ? `Total: ${t.total} · En cours: ${t.running} · Succès: ${t.success_rate}\n`
@@ -43,21 +101,47 @@ RED.nodes.registerType("redclaw-orchestrator", {
           + "\n\n── LLM (mémoire) ──\n"
           + (i ? `Succès: ${i.success_rate} · Durée: ${i.avg_duration_ms}ms · Étapes: ${i.avg_steps}` : "Aucune stat");
         alert(msg);
-      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+      } catch (error) { RED.notify("Erreur: "+error.message, "error"); }
     });
 
+    async function showTickets(url, emptyMessage, title) {
+      try {
+        const data = await getAdminJson(url);
+        if (!isRecord(data) || !Array.isArray(data.tickets) ||
+            data.tickets.some(ticket => !isRecord(ticket) ||
+              (ticket.tool_calls !== undefined &&
+                (!Array.isArray(ticket.tool_calls) || ticket.tool_calls.some(call => !isRecord(call)))) ||
+              (ticket.steps !== undefined && !Array.isArray(ticket.steps)) ||
+              (ticket.error !== undefined && typeof ticket.error !== "string"))) {
+          throw new Error("Réponse des tickets invalide");
+        }
+        if (!data.tickets.length) return RED.notify(emptyMessage, "info");
+        alert(`${title} (${data.tickets.length}):\n\n` + data.tickets.map(_fmtTicket).join("\n\n"));
+      } catch (error) { RED.notify("Erreur: "+error.message, "error"); }
+    }
     $("#rc-btn-tickets").on("click", function () {
-      fetch("/redclaw/tickets?n=10").then(r=>r.json()).then(d => {
-        if (!d.tickets?.length) return RED.notify("Aucun ticket", "info");
-        alert(`Tickets récents (${d.tickets.length}):\n\n` + d.tickets.map(_fmtTicket).join("\n\n"));
-      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+      return showTickets("/redclaw/tickets?n=10", "Aucun ticket", "Tickets récents");
     });
 
     $("#rc-btn-tickets-fail").on("click", function () {
-      fetch("/redclaw/tickets?n=20&status=failed").then(r=>r.json()).then(d => {
-        if (!d.tickets?.length) return RED.notify("Aucun ticket échoué ✅", "info");
-        alert(`Tickets échoués (${d.tickets.length}):\n\n` + d.tickets.map(_fmtTicket).join("\n\n"));
-      }).catch(e => RED.notify("Erreur: "+e.message, "error"));
+      return showTickets("/redclaw/tickets?n=20&status=failed", "Aucun ticket échoué ✅", "Tickets échoués");
+    });
+
+    $("#rc-btn-runs").on("click", async function () {
+      try {
+        const d = await getAdminJson("/redclaw/runs?n=10");
+        if (!isRecord(d) || !Array.isArray(d.runs) ||
+            d.runs.some(run => !isRecord(run) || !Array.isArray(run.events) ||
+              !isRecord(run.metrics))) {
+          throw new Error("Réponse des traces cognitives invalide");
+        }
+        if (!d.runs.length) return RED.notify("Aucune trace cognitive persistée", "info");
+        alert(`Traces cognitives récentes (${d.runs.length}):\n\n` + d.runs.map(run =>
+          `[${run.status}] ${run.run_id} · ${run.orchestrator_id}\n`
+          + `${run.events.length} événements · ${run.metrics.duration_ms || run.duration_ms}ms`
+          + `${run.trace_truncated ? " · TRACE TRONQUÉE" : ""}`
+        ).join("\n\n"));
+      } catch (error) { RED.notify("Erreur: "+error.message, "error"); }
     });
     // ─────────────────────────────────────────────────────────────────────
     function toggleMode() {
@@ -68,6 +152,48 @@ RED.nodes.registerType("redclaw-orchestrator", {
     $("#node-input-llmMode").on("change", toggleMode);
     toggleMode();
 
+    function toggleTreeEvaluator() {
+      const enabled = $("#node-input-reasoningMode").val() === "tree";
+      $(".rc-tree-evaluator-row").toggle(enabled);
+      $(".rc-tree-safety-row").toggle(enabled);
+      toggleTreeGenerators();
+    }
+    function toggleTreeGenerators() {
+      const enabled = $("#node-input-reasoningMode").val() === "tree";
+      $(".rc-tree-generators-row").toggle(enabled);
+    }
+    $("#node-input-reasoningMode").on("change", toggleTreeEvaluator);
+    $("#node-input-llmMode").on("change", toggleTreeGenerators);
+    const configuredGenerators = Array.isArray(this.treeGenerators) ? this.treeGenerators : [];
+    [1, 2, 3, 4].forEach(index => {
+      const generator = configuredGenerators[index - 1];
+      const savedConfig = this[`treeGeneratorConfig${index}`];
+      const savedExternal = this[`treeGeneratorExternal${index}`];
+      $(`#node-input-treeGeneratorConfig${index}`).val(
+        typeof savedConfig === "string" ? savedConfig : generator?.llmConfig || ""
+      );
+      $(`#node-input-treeGeneratorExternal${index}`).val(
+        typeof savedExternal === "string"
+          ? savedExternal
+          : generator && !generator.llmConfig ? generator.label : ""
+      );
+    });
+    toggleTreeEvaluator();
+    toggleTreeGenerators();
+    function toggleTreeSafetyConfig() {
+      const tree = $("#node-input-reasoningMode").val() === "tree";
+      const safetyEnabled = tree && $("#node-input-treeSafetyEnabled").is(":checked");
+      $(".rc-tree-safety-config-row").toggle(safetyEnabled);
+      $(".rc-tree-safety-review-row").toggle(safetyEnabled);
+      $(".rc-tree-safety-review-config-row").toggle(
+        safetyEnabled && $("#node-input-treeSafetyReviewEnabled").is(":checked")
+      );
+    }
+    $("#node-input-treeSafetyEnabled").on("change", toggleTreeSafetyConfig);
+    $("#node-input-reasoningMode").on("change", toggleTreeSafetyConfig);
+    $("#node-input-treeSafetyReviewEnabled").on("change", toggleTreeSafetyConfig);
+    toggleTreeSafetyConfig();
+
     function toggleMem() {
       $(".rc-mem-row").toggle($("#node-input-memoryEnabled").is(":checked"));
     }
@@ -76,14 +202,54 @@ RED.nodes.registerType("redclaw-orchestrator", {
 
     $("#rc-orch-sessions").on("click", async function () {
       try {
-        const r = await fetch("/redclaw/sessions");
-        const d = await r.json();
+        const d = await getAdminJson("/redclaw/sessions");
+        if (!isRecord(d) || !Array.isArray(d.sessions)) {
+          throw new Error("Réponse des sessions invalide");
+        }
         if (!d.sessions.length) return RED.notify("Aucune session active", "info");
         alert(d.sessions.map(s =>
           `• ${s.id} — ${s.count} msg — ${new Date(s.updatedAt).toLocaleString()}`
         ).join("\n"));
       } catch (e) { RED.notify(e.message, "error"); }
     });
+  },
+  oneditvalidate: function () {
+    const rows = readTreeGeneratorRows();
+    let emptyRowSeen = false;
+    const configs = new Set();
+    const labels = new Set();
+    for (const row of rows) {
+      if (!row.llmConfig && !row.label) {
+        emptyRowSeen = true;
+        continue;
+      }
+      if (emptyRowSeen || (row.llmConfig && row.label)) return false;
+      if (row.llmConfig) {
+        if (configs.has(row.llmConfig)) return false;
+        configs.add(row.llmConfig);
+        continue;
+      }
+      if ($("#node-input-llmMode").val() !== "external" || row.label.length > 64) {
+        return false;
+      }
+      const normalizedLabel = row.label.toLowerCase();
+      if (labels.has(normalizedLabel)) return false;
+      labels.add(normalizedLabel);
+    }
+    return true;
+  },
+  oneditsave: function () {
+    const rows = readTreeGeneratorRows();
+    rows.forEach((row, index) => {
+      this[`treeGeneratorConfig${index + 1}`] = row.llmConfig;
+      this[`treeGeneratorExternal${index + 1}`] = row.label;
+    });
+    this.treeGenerators = rows
+      .map((row, index) => row.llmConfig
+        ? { id: `tree-${index + 1}`, llmConfig: row.llmConfig }
+        : row.label ? { id: `tree-${index + 1}`, label: row.label } : null)
+      .filter(Boolean);
+    this.outputs = 8;
   },
 });
 </script>
@@ -93,6 +259,18 @@ RED.nodes.registerType("redclaw-orchestrator", {
     <label for="node-input-name"><i class="fa fa-tag"></i> Nom</label>
     <input type="text" id="node-input-name" placeholder="Orchestrateur" />
   </div>
+  <div class="form-row rc-tree-safety-row rc-tree-safety-review-row">
+    <input type="checkbox" id="node-input-treeSafetyReviewEnabled" style="width:auto;" />
+    <label for="node-input-treeSafetyReviewEnabled" style="width:auto;margin-left:5px;">
+      <i class="fa fa-user"></i> Permettre la revue humaine des verdicts review
+    </label>
+  </div>
+  <div class="form-row rc-tree-safety-row rc-tree-safety-review-config-row">
+    <span style="font-size:0.8em;color:#888;">
+      Câblez la sortie 4 vers <b>Revue de réponse</b>, puis ses sorties 2 et 3
+      vers l'entrée de l'orchestrateur. Sans reçu authentifié, la réponse reste bloquée.
+    </span>
+  </div>
 
   <!-- Mode LLM -->
   <div class="form-row">
@@ -101,6 +279,60 @@ RED.nodes.registerType("redclaw-orchestrator", {
       <option value="internal">Interne — llm-config (Ollama, OpenAI, Anthropic…)</option>
       <option value="external">Externe — nœud LLM Node-RED (llama-cpp, etc.)</option>
     </select>
+  </div>
+  <div class="form-row">
+    <label for="node-input-reasoningMode"><i class="fa fa-sitemap"></i> Raisonnement</label>
+    <select id="node-input-reasoningMode" style="width:75%;">
+      <option value="legacy">Classique — boucle agentique existante</option>
+      <option value="tree">Tree Reasoner expérimental — réponses uniquement</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <input type="checkbox" id="node-input-strictToolAllowlist" style="width:auto;" />
+    <label for="node-input-strictToolAllowlist" style="width:auto;margin-left:5px;">
+      <i class="fa fa-lock"></i> Refuser les outils non déclarés (mode strict)
+    </label>
+  </div>
+  <div class="form-row">
+    <span style="font-size:0.8em;color:#888;">
+      En mode strict, un skill sans outil déclaré ne peut appeler aucun outil.
+      Désactivé par défaut pour préserver les flows existants.
+    </span>
+  </div>
+  <div class="form-row">
+    <span style="font-size:0.8em;color:#888;">
+      Le mode Tree peut s'abstenir et ne déclenche jamais d'outil. Sans pool
+      multi-LLM, le même chemin LLM sert aussi à l'évaluation. Avec un pool
+      externe, Output 3 sert à l'évaluation/confrontation par défaut; configurez
+      une seconde configuration LLM ci-dessous pour utiliser un évaluateur dédié.
+    </span>
+  </div>
+  <div class="form-row rc-tree-evaluator-row">
+    <label for="node-input-evaluatorLlmConfig"><i class="fa fa-balance-scale"></i> LLM évaluateur</label>
+    <input type="text" id="node-input-evaluatorLlmConfig" />
+  </div>
+  <div class="form-row rc-tree-safety-row">
+    <input type="checkbox" id="node-input-treeSafetyEnabled" style="width:auto;" />
+    <label for="node-input-treeSafetyEnabled" style="width:auto;margin-left:5px;">
+      <i class="fa fa-shield"></i> Activer le Safety Reasoner (fail-closed)
+    </label>
+  </div>
+  <div class="form-row rc-tree-safety-row rc-tree-safety-config-row">
+    <label for="node-input-safetyLlmConfig"><i class="fa fa-shield"></i> LLM Safety dédié</label>
+    <input type="text" id="node-input-safetyLlmConfig" />
+  </div>
+  <div class="form-row rc-tree-safety-row rc-tree-safety-config-row">
+    <span style="font-size:0.8em;color:#888;">
+      Une réponse candidate est transmise au LLM Safety configuré. Les verdicts
+      review/deny bloquent sa restitution. Utilisez une configuration distincte.
+    </span>
+  </div>
+  <div class="form-row rc-tree-evaluator-row">
+    <span style="font-size:0.8em;color:#888;">
+      Facultatif. Une configuration distincte est nécessaire pour isoler
+      les appels de génération et d'évaluation. Pour limiter les biais
+      corrélés, choisissez un backend et un modèle réellement distincts.
+    </span>
   </div>
 
   <!-- Config interne -->
@@ -119,6 +351,47 @@ RED.nodes.registerType("redclaw-orchestrator", {
     Le prompt est envoyé en <code>msg.payload = messages[]</code> (format chat).<br/>
     La réponse est lue depuis <code>msg.payload</code> (string).<br/>
     <code>msg.redclaw_llm_id</code> est préservé automatiquement — ne pas le modifier.
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <label><i class="fa fa-sitemap"></i> Générateurs Tree</label>
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <label for="node-input-treeGeneratorConfig1">LLM Tree 1</label>
+    <input type="text" id="node-input-treeGeneratorConfig1" style="width:45%;" />
+    <input type="text" id="node-input-treeGeneratorExternal1" maxlength="64"
+      placeholder="Route externe (Output 5, mode externe)" style="width:35%;" />
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <label for="node-input-treeGeneratorConfig2">LLM Tree 2</label>
+    <input type="text" id="node-input-treeGeneratorConfig2" style="width:45%;" />
+    <input type="text" id="node-input-treeGeneratorExternal2" maxlength="64"
+      placeholder="Route externe (Output suivant)" style="width:35%;" />
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <label for="node-input-treeGeneratorConfig3">LLM Tree 3</label>
+    <input type="text" id="node-input-treeGeneratorConfig3" style="width:45%;" />
+    <input type="text" id="node-input-treeGeneratorExternal3" maxlength="64"
+      placeholder="Route externe (Output suivant)" style="width:35%;" />
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <label for="node-input-treeGeneratorConfig4">LLM Tree 4</label>
+    <input type="text" id="node-input-treeGeneratorConfig4" style="width:45%;" />
+    <input type="text" id="node-input-treeGeneratorExternal4" maxlength="64"
+      placeholder="Route externe (Output suivant)" style="width:35%;" />
+  </div>
+  <div class="form-row rc-tree-generators-row">
+    <span style="font-size:0.8em;color:#888;">
+      Choisissez une configuration <code>llm-config</code> pour appeler ce
+      modèle directement; sa sortie dédiée émet ses résultats. Pour un nœud LLM
+      externe sans <code>llm-config</code>, laissez le sélecteur vide et
+      renseignez la route : la sortie dédiée émettra la requête à câbler vers ce
+      nœud, puis son retour devra préserver <code>msg.redclaw_llm_id</code>.
+      Chaque ligne configurée ajoute une sortie après les quatre sorties
+      historiques. Les lignes doivent être consécutives et chaque configuration
+      ne peut être choisie qu'une fois.
+      Avec un seul générateur, jusqu'à deux candidats sont demandés; avec
+      plusieurs, les réponses sont agrégées avant l'évaluation.
+    </span>
   </div>
 
   <hr style="border-color:#eee;"/>
@@ -145,6 +418,9 @@ RED.nodes.registerType("redclaw-orchestrator", {
       <button id="rc-btn-tickets-fail" class="red-ui-button" style="font-size:11px;padding:3px 8px;color:#f38ba8;">
         <i class="fa fa-times-circle"></i> Tickets échoués
       </button>
+      <button id="rc-btn-runs" class="red-ui-button" style="font-size:11px;padding:3px 8px;">
+        <i class="fa fa-sitemap"></i> Traces cognitives
+      </button>
     </div>
   </div>
 
@@ -165,6 +441,45 @@ RED.nodes.registerType("redclaw-orchestrator", {
     <label for="node-input-memoryDir"><i class="fa fa-folder"></i> Dossier mémoire</label>
     <input type="text" id="node-input-memoryDir" placeholder="~/.node-red/redclaw-memory (défaut)" />
   </div>
+  <div class="form-row">
+    <label for="node-input-runStorageDir"><i class="fa fa-history"></i> Dossier des traces</label>
+    <input type="text" id="node-input-runStorageDir" placeholder="Vide = mémoire uniquement" />
+  </div>
+  <div class="form-row">
+    <span style="font-size:0.8em;color:#888;">
+      Facultatif. Définit un dossier dédié pour conserver les traces cognitives après redémarrage.
+      Les données sont en clair; choisir un emplacement protégé.
+    </span>
+  </div>
+  <div class="form-row">
+    <label for="node-input-configurationVersion">Version configuration</label>
+    <input type="text" id="node-input-configurationVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-promptVersion">Version prompt</label>
+    <input type="text" id="node-input-promptVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-modelVersion">Version modèle</label>
+    <input type="text" id="node-input-modelVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-contextVersion">Version contexte</label>
+    <input type="text" id="node-input-contextVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-policyVersion">Version politique</label>
+    <input type="text" id="node-input-policyVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <label for="node-input-contractVersion">Version contrat</label>
+    <input type="text" id="node-input-contractVersion" maxlength="128" />
+  </div>
+  <div class="form-row">
+    <span style="font-size:0.8em;color:#888;">
+      Étiquettes facultatives fournies par l'opérateur; elles ne calculent ni ne vérifient les versions réelles.
+    </span>
+  </div>
   <div class="form-row rc-mem-row" style="display:flex;gap:14px;">
     <div>
       <label style="display:block;font-size:0.8em;color:#888;">Échanges retenus</label>
@@ -184,6 +499,30 @@ RED.nodes.registerType("redclaw-orchestrator", {
 
 <script type="text/html" data-help-name="redclaw-orchestrator">
   <p><b>RedClaw — Orchestrateur</b></p>
+
+  <h3>Mode Tree Reasoner expérimental</h3>
+  <p>Le mode par défaut reste la boucle agentique existante. Le mode Tree
+  utilise le Tree Reasoner puis le Decision Engine pour produire une réponse
+  ou s'abstenir. Le même LLM génère, évalue et confronte les hypothèses; il
+  peut signaler accords, désaccords, contradictions, hypothèses dominantes et
+  insuffisamment étayées. Les contradictions détectées restent ouvertes. Ce
+  n'est pas un évaluateur indépendant. Les appels sont bornés et les événements
+  de trace n'enregistrent pas le texte des hypothèses. Ce mode ne déclenche
+  jamais d'outil et ne constitue pas une preuve d'amélioration de la qualité.</p>
+  <p>La réponse expose aussi <code>msg.redclaw.convergence</code> : sélection
+  (ou abstention), alternatives, score et confiance distincts, preuves,
+  contradictions et branches sources.</p>
+  <p>L'évaluation Safety Tree est facultative et désactivée par défaut. Quand
+  elle est activée, elle exige une configuration LLM dédiée et bloque la réponse
+  si le verdict est <code>review</code> ou <code>deny</code>. Le texte de la
+  demande et de la réponse candidate est transmis à ce fournisseur; vérifiez
+  son traitement des données. Cette évaluation ne donne aucune autorisation
+  d'action.</p>
+  <p>Pour permettre une revue humaine d'un verdict <code>review</code>, activez
+  l'option dédiée et câblez la sortie 4 vers le nœud <b>Revue de réponse</b>.
+  Les sorties 2 et 3 de ce nœud doivent revenir à l'entrée de l'orchestrateur.
+  Seul un approbateur authentifié peut libérer la réponse; le refus, l'expiration
+  ou l'absence de reçu restent bloquants.</p>
 
   <h3>Mode Interne</h3>
   <p>Utilise <b>llm-config</b> directement (Ollama, OpenAI, Anthropic, LM Studio, REST).</p>

@@ -14,7 +14,7 @@ if (msg.routeur.params.status === "true" || msg.routeur.params.state === "ON") {
 } else {
   msg.payload = { dps: 1, set: false };
 }
-// msg.redclaw_call_id préservé automatiquement
+// msg.redclaw_call_id interne, restauré par le Router au retour orchestrateur
 return msg;`,
       output: `// msg.payload = résultat brut du nœud Tuya
 // msg.adaptateur.callId est déjà injecté automatiquement — ne pas le supprimer
@@ -132,6 +132,9 @@ adaptateur.published = true;`,
   <div class="form-row">
     <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
     <input type="number" id="node-input-timeout" min="1000" step="1000" style="width:110px;" />
+    <div style="font-size:0.78em;color:#888;margin-top:2px;">
+      Délai maximal d'attente de la réponse du nœud cible. Le timeout du MCP Router reste la limite totale de l'appel.
+    </div>
   </div>
 
   <hr style="border-color:#eee;"/>
@@ -175,10 +178,14 @@ adaptateur.published = true;`,
       <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
         Disponible dans le code :<br/>
         <code>msg.payload</code> = params du LLM &nbsp;|&nbsp;
-        <code>msg.routeur.params</code> = même chose &nbsp;|&nbsp;
+        <code>msg.routeur.params</code> = paramètres autorisés (lecture seule) &nbsp;|&nbsp;
         <code>msg.routeur.tool</code> = nom du tool<br/>
         <code>msg.adaptateur.callId</code> = callId (déjà injecté, <b>ne pas modifier</b>)<br/>
-        Faire <code>return msg;</code>
+        <code>msg.payload</code> est une copie modifiable des paramètres ;
+        <code>msg.routeur.params</code> reste en lecture seule.
+        Retourner un objet message de manière synchrone (normalement <code>return msg;</code>).
+        Les identifiants de corrélation sont rétablis après transformation.
+        En cas d'exception, l'action est refusée et le nœud cible n'est pas appelé.
       </div>
       <textarea id="node-input-inputTransform" rows="6"
         style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
@@ -191,9 +198,9 @@ adaptateur.published = true;`,
       <label><i class="fa fa-arrow-left"></i> Transformation sortie</label>
       <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
         <code>msg.payload</code> = résultat brut du nœud Node-RED<br/>
-        <code>msg.adaptateur</code> pré-initialisé avec <code>{ callId }</code><br/>
-        Ajouter les propriétés dans <code>msg.adaptateur</code> puis <code>return msg;</code><br/>
-        <b>Ne pas écraser</b> <code>msg.adaptateur</code> entièrement (le callId serait perdu).
+        La variable <code>adaptateur</code> est l'objet résultat à enrichir.<br/>
+        <b>Ne pas remplacer</b> <code>msg.adaptateur</code> : le système injecte le callId après transformation.<br/>
+        Une exception ou une Promise renvoie un résultat en échec, jamais un succès de fallback.
       </div>
       <textarea id="node-input-outputTransform" rows="5"
         style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;
@@ -208,7 +215,7 @@ adaptateur.published = true;`,
       </label>
       <div style="font-size:0.78em;color:#888;margin-bottom:3px;line-height:1.5;">
         Corrèle la vraie réponse dans un flux de messages mixtes.<br/>
-        Retourner <code>true</code> → accepté · <code>false</code> → ignoré, attend le suivant.<br/>
+        Retourner strictement <code>true</code> de manière synchrone → accepté · autre valeur, Promise ou exception → ignoré, attend le suivant.<br/>
         <b>Cas d'usage :</b> hub multi-capteurs · MQTT multi-topics ·
         WebSocket stream · port série · webhook · toute source émettant des messages non sollicités.
       </div>
@@ -243,6 +250,11 @@ adaptateur.published = true;`,
   <code>adaptateur.success = true;</code><br/>
   <code>adaptateur.state = msg.payload?.data?.dps?.["1"] ? "ON" : "OFF";</code><br/>
   Pas de <code>return</code> nécessaire. Le <code>callId</code> est injecté automatiquement.</p>
+  <p>Les scripts sont synchrones. Les Promises retournées sont refusées et leurs réjections signalées.
+  Les thenables personnalisés sont refusés sans appeler leur méthode <code>then</code>.
+  Les transformations ne peuvent pas remplacer les identifiants de corrélation internes.
+  Une erreur de compilation bloque le dispatch. Une exception de transformation est signalée comme échec ;
+  elle ne transmet pas l'action au nœud cible et ne produit pas de succès de fallback.</p>
 
   <h3>Vérification callId</h3>
   <p>Le MCP Router vérifie <code>msg.adaptateur.callId</code> avant de continuer.

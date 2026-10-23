@@ -55,13 +55,22 @@
           const url = $("#node-config-input-baseUrl").val();
           if (t === "ollama") {
             const r = await fetch(`${url}/api/tags`);
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
             const d = await r.json();
-            btn.text(`✓ ${(d.models||[]).length} modèle(s)`).css("color","green");
+            if (!d || !Array.isArray(d.models)) {
+              throw new Error("Réponse Ollama invalide");
+            }
+            btn.text(`✓ ${d.models.length} modèle(s)`).css("color","green");
           } else if (["openai","lmstudio","localai","jan","mistral"].includes(t)) {
             const key = $("#node-config-input-apiKey").val();
             const h = key ? { Authorization: `Bearer ${key}` } : {};
             const r = await fetch(`${url}/v1/models`, { headers: h });
-            btn.text(r.ok ? "✓ Connecté" : `✗ HTTP ${r.status}`).css("color", r.ok ? "green" : "red");
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const d = await r.json();
+            if (!d || !Array.isArray(d.data)) {
+              throw new Error("Réponse de modèles invalide");
+            }
+            btn.text("✓ Connecté").css("color","green");
           } else { btn.text("Test manuel requis").css("color","orange"); }
         } catch (e) { btn.text(`✗ ${e.message.slice(0,30)}`).css("color","red"); }
         btn.prop("disabled", false);
@@ -70,6 +79,14 @@
     },
   });
 })();
+</script>
+
+<script type="text/html" data-help-name="llm-config">
+  <p>Configuration partagée d’un backend LLM pour les nœuds d’orchestration.</p>
+  <p>Choisissez un backend, renseignez son URL et son modèle, puis configurez la clé API si nécessaire.</p>
+  <p>Le backend REST accepte un chemin, un chemin de résultat et un modèle de corps avec les variables
+    <code>{{model}}</code>, <code>{{system}}</code> et <code>{{user}}</code>.</p>
+  <p>Laissez le chemin de résultat vide pour utiliser toute la réponse JSON.</p>
 </script>
 
 <script type="text/html" data-template-name="llm-config">
@@ -121,12 +138,13 @@
     <div class="form-row">
       <label for="node-config-input-restResultPath"><i class="fa fa-dot-circle-o"></i> Chemin résultat</label>
       <input type="text" id="node-config-input-restResultPath" placeholder="choices.0.message.content" />
+      <div style="font-size:0.78em;color:#888;">Vide : sérialise toute la réponse JSON.</div>
     </div>
     <div class="form-row">
       <label for="node-config-input-restBodyTpl"><i class="fa fa-code"></i> Body template</label>
       <textarea id="node-config-input-restBodyTpl" rows="3"
         style="width:100%;font-family:monospace;font-size:11px;border-radius:4px;border:1px solid #ccc;padding:5px;"
-        placeholder='{"model":"{{model}}","system":"{{system}}","prompt":"{{user"}}'></textarea>
+        placeholder='{"model":"{{model}}","system":"{{system}}","prompt":"{{user}}"}'></textarea>
       <div style="font-size:0.78em;color:#888;">Variables : <code>{{model}}</code> <code>{{system}}</code> <code>{{user}}</code></div>
     </div>
   </div>

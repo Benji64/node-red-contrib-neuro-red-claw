@@ -25,22 +25,90 @@
  */
 
 const goalStore = require("../lib/goal-store");
+const { parseFiniteNumber } = require("../lib/numeric");
+const { types } = require("node:util");
 
 module.exports = function (RED) {
   function RedclawGoalNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.goalId    = (config.goalId    || `goal_${node.id.slice(0,8)}`).trim();
-    node.skillName = (config.skillName || "").trim();
-    node.goalName  = (config.goalName  || "").trim();
-    node.priority  = config.priority   || "medium";
-    node.metric    = (config.metric    || "").trim();
-    node.target    = parseFloat(config.target) || 0;
-    node.unit      = (config.unit      || "").trim();
-    node.direction = config.direction  || "minimize";
-    node.deadline  = config.deadline   || null;
-    node.goalCtx   = (config.goalCtx   || "").trim();
+    function readConfigValue(key) {
+      if (!config || typeof config !== "object" || types.isProxy(config)) {
+        node.warn("[Goal] Configuration must be a plain object; using defaults");
+        return { present: false, valid: false };
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(config, key);
+      if (!descriptor) return { present: false, valid: true };
+      if (!Object.hasOwn(descriptor, "value")) {
+        node.warn(`[Goal] Configuration "${key}" must be a data property; using its default`);
+        return { present: true, valid: false };
+      }
+      return { present: true, valid: true, value: descriptor.value };
+    }
+
+    function configuredString(key, fallback = "") {
+      const configured = readConfigValue(key);
+      if (!configured.valid) return fallback;
+      if (!configured.present || configured.value === undefined || configured.value === null) {
+        return fallback;
+      }
+      if (typeof configured.value !== "string") {
+        node.warn(`[Goal] Configuration "${key}" must be a string; using its default`);
+        return fallback;
+      }
+      return configured.value.trim();
+    }
+
+    const configuredGoalId = configuredString("goalId");
+    node.goalId = configuredGoalId || `goal_${node.id.slice(0, 8)}`;
+    node.skillName = configuredString("skillName");
+    node.goalName = configuredString("goalName");
+    node.metricName = configuredString("metric");
+    node.unit = configuredString("unit");
+    node.goalCtx = configuredString("goalCtx");
+
+    const priorities = new Set(["critical", "high", "medium", "low"]);
+    const configuredPriority = readConfigValue("priority");
+    if (configuredPriority.valid && configuredPriority.present &&
+        configuredPriority.value !== undefined && !priorities.has(configuredPriority.value)) {
+      node.warn('[Goal] Configuration "priority" is invalid; using "medium"');
+    }
+    node.priority = configuredPriority.valid && priorities.has(configuredPriority.value)
+      ? configuredPriority.value
+      : "medium";
+
+    const configuredTarget = readConfigValue("target");
+    node.target = configuredTarget.valid && configuredTarget.present
+      ? parseFiniteNumber(configuredTarget.value) ?? 0
+      : 0;
+    if (configuredTarget.valid && configuredTarget.present &&
+        configuredTarget.value !== undefined && parseFiniteNumber(configuredTarget.value) === null) {
+      node.warn('[Goal] Configuration "target" must be a finite number; using 0');
+    }
+
+    const directions = new Set(["minimize", "maximize", "reach"]);
+    const configuredDirection = readConfigValue("direction");
+    if (configuredDirection.valid && configuredDirection.present &&
+        configuredDirection.value !== undefined && !directions.has(configuredDirection.value)) {
+      node.warn('[Goal] Configuration "direction" is invalid; using "minimize"');
+    }
+    node.direction = configuredDirection.valid && directions.has(configuredDirection.value)
+      ? configuredDirection.value
+      : "minimize";
+
+    const configuredDeadline = readConfigValue("deadline");
+    node.deadline = null;
+    if (configuredDeadline.valid && configuredDeadline.present &&
+        configuredDeadline.value !== undefined && configuredDeadline.value !== null &&
+        configuredDeadline.value !== "") {
+      if (typeof configuredDeadline.value === "string" &&
+          Number.isFinite(Date.parse(configuredDeadline.value))) {
+        node.deadline = configuredDeadline.value;
+      } else {
+        node.warn('[Goal] Configuration "deadline" must be a valid date; ignoring it');
+      }
+    }
 
     // Crée ou restaure l'objectif au démarrage
     const goal = goalStore.upsert({
@@ -48,7 +116,7 @@ module.exports = function (RED) {
       skill:     node.skillName,
       name:      node.goalName,
       priority:  node.priority,
-      metric:    node.metric,
+      metric:    node.metricName,
       target:    node.target,
       unit:      node.unit,
       direction: node.direction,
@@ -88,11 +156,9 @@ module.exports = function (RED) {
       }
 
       // ── Mise à jour de la métrique ───────────────────────────────────
-      const value = typeof msg.payload === "number"
-        ? msg.payload
-        : parseFloat(msg.payload);
+      const value = parseFiniteNumber(msg.payload);
 
-      if (isNaN(value)) {
+      if (value === null) {
         node.warn(`[Goal] Valeur non numérique : "${msg.payload}"`);
         done(); return;
       }
